@@ -239,12 +239,13 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
 def _store_upload(engine: Engine, data: bytes, suffix: str) -> dict[str, Any]:
     import PIL.Image
+    from mflux.utils.exif_orientation import oriented_size
 
     try:
         with PIL.Image.open(io.BytesIO(data)) as picture:
             picture.verify()
         with PIL.Image.open(io.BytesIO(data)) as picture:
-            width, height = picture.size
+            picture.load()
     except Exception:  # noqa: BLE001 -- any decode failure means the file is not an image
         raise invalid_request("The upload is not a readable image.") from None
     upload_id = f"upl_{secrets.token_hex(6)}"
@@ -252,6 +253,8 @@ def _store_upload(engine: Engine, data: bytes, suffix: str) -> dict[str, Any]:
     input_dir.mkdir(parents=True, exist_ok=True)
     path = input_dir / f"{upload_id}{suffix}"
     path.write_bytes(data)
+    # mflux turns an image by its EXIF orientation before it encodes it, so report the size after the turn.
+    width, height = oriented_size(path)
     return {"upload_id": upload_id, "path": str(path), "width": width, "height": height}
 
 

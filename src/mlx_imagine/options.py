@@ -217,6 +217,40 @@ def _choice(choice: str, type_name: str) -> Any:
     return choice
 
 
+def ignored_options(spec: CommandSpec) -> dict[str, str]:
+    """Options that the command always ignores or refuses: option name -> the reason mflux gives."""
+    from mflux.cli.capabilities import describe_command
+
+    described = describe_command(spec.command, spec.module)
+    by_flag = {option: action for action in spec.build_parser()._actions for option in action.option_strings}
+    return {
+        by_flag[record["flag"]].dest: record.get("reason", "")
+        for record in described.get("options", [])
+        if record.get("status") in {"ignored", "rejected"}
+    }
+
+
+def conditionally_ignored(spec: CommandSpec, request: dict[str, Any], args: Any, model_config: Any) -> dict[str, str]:
+    """Options of this request that the model ignores because of the effective guidance. mflux checks these on
+    sys.argv, which the server cannot use, so the server checks the parsed values."""
+    module = spec.load_module()
+    conditional = getattr(module, "CONDITIONAL_OPTIONS", {})
+    found: dict[str, str] = {}
+    supports = getattr(model_config, "supports_guidance", None)
+    default = getattr(module, "DEFAULT_GUIDANCE", None)
+    guidance = (
+        args.guidance if getattr(args, "guidance", None) is not None else (default if default is not None else 0.0)
+    )
+    if "--negative-prompt" in conditional and request.get("negative_prompt"):
+        # krea2 builds the unconditional branch at any guidance but its default of 1.0. The others need above 1.0.
+        off = guidance == 1.0 if default is not None else guidance <= 1.0
+        if supports is False or off:
+            found["negative_prompt"] = conditional["--negative-prompt"]["reason"]
+    if "--guidance" in conditional and request.get("guidance") is not None and supports is False:
+        found["guidance"] = conditional["--guidance"]["reason"]
+    return found
+
+
 def generate_names(spec: CommandSpec) -> frozenset[str]:
     parser = spec.build_parser()
     return frozenset(name for name in _actions(parser) if name not in LOAD_OPTIONS and name not in BLOCKED_OPTIONS)

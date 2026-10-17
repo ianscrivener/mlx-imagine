@@ -61,3 +61,21 @@ def test_each_supported_model_has_download_patterns(registry: Registry) -> None:
     for entry in registry.entries().values():
         if entry.supported:
             assert entry.spec.download_patterns(entry.name), entry.name
+
+
+def test_the_negative_prompt_is_refused_at_the_guidance_where_mflux_ignores_it(registry: Registry) -> None:
+    """Bug: krea2 at its default guidance 1.0 and z-image at guidance 0 accept a negative prompt that mflux never
+    encodes, and the client thinks it steered the image."""
+    from types import SimpleNamespace
+
+    from mlx_imagine.options import conditionally_ignored
+
+    krea = registry.find("krea2").spec
+    config = SimpleNamespace(supports_guidance=True)
+    request = {"negative_prompt": "blurry"}
+    assert conditionally_ignored(krea, request, SimpleNamespace(guidance=None), config)
+    assert not conditionally_ignored(krea, request, SimpleNamespace(guidance=3.0), config)
+    zimage = registry.find("z-image").spec
+    assert conditionally_ignored(zimage, request, SimpleNamespace(guidance=None), config)
+    assert conditionally_ignored(zimage, request, SimpleNamespace(guidance=1.0), config)
+    assert not conditionally_ignored(zimage, request, SimpleNamespace(guidance=4.0), config)

@@ -241,3 +241,18 @@ def test_a_generate_request_over_the_size_limits_is_refused_before_the_queue(
         response = client.post("/v1/generate", json={"prompt": "x", **extra})
         assert response.status_code == 422 and response.json()["error"]["code"] == "limit_exceeded", extra
     assert engine.queue.waiting() == []
+
+
+def test_an_upload_reports_the_size_after_the_exif_turn(client: TestClient) -> None:
+    """Bug: a phone photo with orientation 6 reports its width and height the wrong way round, so the client
+    sets a wrong output size."""
+    import io
+
+    import piexif
+    import PIL.Image
+
+    buffer = io.BytesIO()
+    PIL.Image.new("RGB", (200, 100)).save(buffer, "JPEG", exif=piexif.dump({"0th": {piexif.ImageIFD.Orientation: 6}}))
+    response = client.post("/v1/uploads", files={"file": ("p.jpg", buffer.getvalue(), "image/jpeg")})
+    assert response.status_code == 201
+    assert (response.json()["width"], response.json()["height"]) == (100, 200)

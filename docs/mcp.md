@@ -33,7 +33,7 @@ claude mcp add --transport http mflux http://127.0.0.1:8765/mcp
 When the server needs a token, add the header:
 
 ```sh
-claude mcp add --transport http mflux http://127.0.0.1:8765/mcp --header "Authorization: Bearer <token>"
+claude mcp add --transport http mlx-imagine http://127.0.0.1:8765/mcp --header "Authorization: Bearer <token>"
 ```
 
 ### A client that uses stdio
@@ -43,9 +43,9 @@ Use this entry in the MCP settings of the client. Give the full path of the `mlx
 ```json
 {
   "mcpServers": {
-    "mflux": {
+    "mlx-imagine": {
       "command": "/path/to/mlx-imagine/.venv/bin/mlx-imagine",
-      "args": ["--config", "/path/to/mlx-imagine/config.yaml", "mcp"]
+      "args": ["--config", "/Users/ianscrivener/MFlux/mlx-imagine/config.yaml", "mcp"]
     }
   }
 }

@@ -57,6 +57,7 @@ Error codes:
 | `not_found` | 404 | The item does not exist. |
 | `model_not_loaded` | 409 | A generate job has no model to use. |
 | `model_in_use` | 409 | The model is loaded, or a job in the queue uses it. |
+| `option_ignored` | 422 | The model ignores an option of the request, for example `guidance` for a guidance-distilled model, or `negative_prompt` at guidance 1.0. |
 | `limit_exceeded` | 422 | A generate request is above `limits.max_pixels`, `max_steps` or `max_seeds`. |
 | `body_too_large` | 413 | A JSON body is larger than 1 MB, or an upload is larger than `max_upload_mb` plus 1 MB. |
 | `confirm_required` | 409 | A delete request does not have `confirm` set to `true`. A download request does not have it either, and `require_model_confirmation` is `true`. |
@@ -518,6 +519,16 @@ Low-RAM mode (scope 3.8):
 ```
 
 `state` is `ready` or `needs_reload`.
+
+`capabilities` helps a client choose request values:
+
+| Field | Meaning |
+|---|---|
+| `modes` | `txt2img`, `img2img` or `edit`. |
+| `default_steps` | The number of steps when the request has none. |
+| `supports_guidance` | `false` when the model ignores `guidance`. A request that sets it returns `option_ignored`. |
+| `default_guidance` | The guidance when the request has none, or `null` when the model decides. |
+| `supports_negative_prompt` | `false` when the model never uses `negative_prompt`. At low guidance a model can ignore it too. |
 
 ### 5.2 Generate
 

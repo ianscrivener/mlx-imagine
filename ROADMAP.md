@@ -4,11 +4,8 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
-| T-08 | 3 | Refuse options that a model ignores | `ignored-options` |
 | T-10 | 5 | Measure MLX cache limit | `mlx-cache-limit` |
-| T-11 | 5 | Fix upload sizes for EXIF orientation | `exif-size` |
 | T-15 | 6 | OpenAI-compatible adapter | `openai-api` |
-| T-16 | 6 | Capabilities in `GET /v1/model` | `model-capabilities` |
 | T-22 | 8 | Startup warning and proxy example | `proxy-example` |
 
 
@@ -28,6 +25,9 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 ## Done
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
+| T-08 | 3 | Refuse options that a model ignores | `ignored-options` |
+| T-11 | 5 | Fix upload sizes for EXIF orientation | `exif-size` |
+| T-16 | 6 | Capabilities in `GET /v1/model` | `model-capabilities` |
 | T-04 | 1 | Exception text goes into responses | `error-leak` |
 | T-06 | 2 | Pure ASGI auth (event stream) | `asgi-auth` |
 | T-07 | 2 | Request size limits | `request-limits` |

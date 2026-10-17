@@ -18,7 +18,16 @@ from .catalog import Catalog
 from .config import Settings
 from .errors import ApiError, conflict, invalid_request, not_found, unprocessable
 from .jobs import Job, JobCancelled, JobQueue
-from .options import SERVER_OPTIONS, check_image_paths, generate_names, load_names, parse, to_argv
+from .options import (
+    SERVER_OPTIONS,
+    check_image_paths,
+    conditionally_ignored,
+    generate_names,
+    ignored_options,
+    load_names,
+    parse,
+    to_argv,
+)
 from .paths import resolve_inside, safe_name
 from .registry import CommandSpec, ModelEntry, Registry
 
@@ -48,6 +57,7 @@ class LoadSpec:
     # An mflux-format model in the Hugging Face cache: its repository ID and its snapshot folder.
     hub_repo: str | None = None
     model_path: Path | None = None
+    capabilities: dict[str, Any] = field(default_factory=dict)
 
     @property
     def spec(self) -> CommandSpec:
@@ -61,6 +71,7 @@ class LoadSpec:
             "saved": self.saved_name is not None,
             "quantize": self.quantize,
             "low_ram": self.low_ram,
+            "capabilities": self.capabilities,
         }
 
 
@@ -255,8 +266,22 @@ class Engine:
             hub_repo=model if hub is not None else None,
             model_path=hub[0] if hub is not None else None,
         )
-        self._validate(load_spec, [])
+        args, _ = self._validate(load_spec, [])
+        load_spec.capabilities = self._capabilities(load_spec, args)
         return load_spec
+
+    def _check_ignored(self, target: LoadSpec, request: dict[str, Any], args: Any) -> None:
+        """Refuse an option that the model ignores, so the client does not think it had an effect."""
+        found = {n: r for n, r in ignored_options(target.spec).items() if request.get(n) is not None}
+        if not found:
+            model_config = target.spec.steps().validate(args)
+            found = conditionally_ignored(target.spec, request, args, model_config)
+        for name, reason in found.items():
+            raise unprocessable(
+                "option_ignored",
+                f"{target.entry.name} ignores {name!r}: {reason} Remove it from the request.",
+                option=name,
+            )
 
     def _check_limits(self, args: Any) -> None:
         """Refuse a request that asks for more than the server settings allow, before the job enters the queue."""
@@ -282,6 +307,21 @@ class Engine:
                 f"{len(seeds)} seeds is more than limits.max_seeds ({settings.max_seeds}).",
                 limit="max_seeds",
             )
+
+    def _capabilities(self, load_spec: LoadSpec, args: Any) -> dict[str, Any]:
+        """What a client needs to choose request values: the defaults and the options that the model ignores."""
+        spec = load_spec.spec
+        model_config = spec.steps().validate(args)
+        ignored = ignored_options(spec)
+        supports = getattr(model_config, "supports_guidance", None)
+        default = getattr(spec.load_module(), "DEFAULT_GUIDANCE", None)
+        return {
+            "modes": list(load_spec.entry.modes),
+            "default_steps": getattr(args, "steps", None),
+            "supports_guidance": "guidance" not in ignored and supports is not False,
+            "default_guidance": default if default is not None else getattr(args, "guidance", None),
+            "supports_negative_prompt": "negative_prompt" not in ignored and supports is not False,
+        }
 
     def _check_quantize(self, quantize: Any) -> None:
         choices = self.settings.quantize_choices()
@@ -449,6 +489,7 @@ class Engine:
         mflux_request = {name: value for name, value in request.items() if name not in SERVER_OPTIONS}
         argv = to_argv(target.spec.build_parser(), mflux_request, allowed=generate_names(target.spec))
         args, warnings = self._validate(target, argv)
+        self._check_ignored(target, mflux_request, args)
         self._check_limits(args)
         job = Job("generate", request, lambda job: self._do_generate(job, argv, **embed))
         job.warnings = warnings

@@ -308,3 +308,23 @@ def test_a_metadata_option_must_be_a_boolean(engine: Engine) -> None:
     with pytest.raises(ApiError) as caught:
         engine.submit_generate({"prompt": "x", "exif_enabled": "no"})
     assert caught.value.code == "option_invalid"
+
+
+def test_an_option_that_the_model_ignores_is_refused(engine: Engine) -> None:
+    """Bug: the server accepts guidance for a guidance-distilled model, mflux ignores it with no message, and the
+    client thinks that the value had an effect."""
+    wait_for(engine.submit_load({"model": "z-image-turbo"}))
+    for name, value in (("guidance", 3.5), ("negative_prompt", "blurry")):
+        with pytest.raises(ApiError) as caught:
+            engine.submit_generate({"prompt": "x", name: value})
+        assert caught.value.code == "option_ignored" and caught.value.details["option"] == name
+    assert engine.submit_generate({"prompt": "x", "steps": 1}) is not None
+
+
+def test_the_loaded_model_reports_its_capabilities(engine: Engine) -> None:
+    """Bug: a client has no way to learn that the model ignores guidance, so it sends one and gets an error."""
+    job = wait_for(engine.submit_load({"model": "z-image-turbo"}))
+    assert job.state == "succeeded", job.error
+    caps = engine.loaded.to_dict()["capabilities"]
+    assert caps["supports_guidance"] is False and caps["supports_negative_prompt"] is False
+    assert caps["default_steps"] and "txt2img" in caps["modes"]
