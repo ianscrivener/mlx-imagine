@@ -171,7 +171,7 @@ def step_lowram() -> None:
 
 def step_save() -> None:
     started = time.time()
-    job = api("POST", "/v1/models/saved", {"model": SAVE_MODEL, "quantize": 8, "name": SAVE_NAME})
+    job = api("POST", "/v1/models/mflux/saves", {"model": SAVE_MODEL, "quantize": 8, "name": SAVE_NAME})
     if "id" not in job:
         report("save and quantize q8", False, json.dumps(job))
         return
@@ -182,7 +182,7 @@ def step_save() -> None:
         job["state"] == "succeeded",
         f"{time.time() - started:.0f}s peak={used['mlx_peak_gb']} err={job['error']}",
     )
-    deleted = api("DELETE", f"/v1/models/saved/{SAVE_NAME}?confirm=true")
+    deleted = api("DELETE", f"/v1/models/mflux/mflux_dir/{SAVE_NAME}?confirm=true")
     report("delete the saved test model", "freed_gb" in (deleted or {}), json.dumps(deleted))
 
 

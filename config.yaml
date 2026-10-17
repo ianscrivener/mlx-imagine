@@ -9,6 +9,7 @@ mflux_models:
   max_models: 10
   max_size_gb: 150
   remote_url: https://huggingface.co/mflux-community
+  cron_minutes: 5
 
 huggingface_models:
   local_directory: /Volumes/Crucial500Gb/HUGGINGFACE_HUB_ACTIVE
@@ -18,6 +19,9 @@ huggingface_models:
   allow_delete: true
   max_models: 10
   max_size_gb: 150
+  cron_minutes: 5
+
+data_directory: ./data
 
 image_directories:
   input: ./input

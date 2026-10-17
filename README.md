@@ -50,7 +50,7 @@ The server listens on `http://127.0.0.1:8765`. It starts with no model loaded.
 Example session:
 
 ```sh
-curl -X POST localhost:8765/v1/models/huggingface/download -H 'content-type: application/json' -d '{"model": "z-image-turbo"}'
+curl -X POST localhost:8765/v1/models/mflux/downloads -H 'content-type: application/json' -d '{"model": "z-image-turbo"}'
 curl -X POST localhost:8765/v1/model/load -H 'content-type: application/json' -d '{"model": "z-image-turbo", "quantize": 8}'
 curl -X POST localhost:8765/v1/generate -H 'content-type: application/json' -d '{"prompt": "a puffin on a rock", "seed": [1, 2]}'
 curl localhost:8765/v1/jobs/<job id>
@@ -58,7 +58,7 @@ curl localhost:8765/v1/jobs/<job id>
 
 Each request that takes time returns a job. Read the job with `GET /v1/jobs/{id}`, or follow it with `GET /v1/jobs/{id}/events` (Server-Sent Events). The full API is in [docs/api.md](docs/api.md).
 
-The request fields use the names of the mflux command options: `--image-path` becomes `image_path`. `GET /v1/models/supported/{name}/schema` gives the JSON Schema of each model.
+The request fields use the names of the mflux command options: `--image-path` becomes `image_path`. `GET /v1/models/mflux/schemas/{name}` gives the JSON Schema of each model.
 
 ## Settings
 

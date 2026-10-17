@@ -57,6 +57,9 @@ def settings(tmp_path: Path) -> Settings:
         model_dir=str(tmp_path / "models"),
         input_dir=str(tmp_path / "input"),
         output_dir=str(tmp_path / "output"),
+        data_dir=str(tmp_path / "data"),
+        mflux_cron_minutes=0,
+        hf_cron_minutes=0,
     )
 
 

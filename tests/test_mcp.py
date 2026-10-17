@@ -15,10 +15,10 @@ def test_each_operation_has_a_tool_and_the_deletes_are_marked_destructive(engine
     """Bug: a delete tool has no destructive hint, so an agent client runs it without asking the user."""
     tools = _tools(engine)
     assert {"load_model", "unload_model", "download_model", "save_model", "get_job", "cancel_job"} <= tools.keys()
-    for name in ("delete_huggingface_model", "delete_saved_model"):
+    for name in ("delete_model",):
         assert tools[name].annotations.destructive_hint is True
         assert "confirm" in tools[name].input_schema["required"]
-    assert tools["list_saved_models"].annotations.read_only_hint is True
+    assert tools["list_models"].annotations.read_only_hint is True
 
 
 def test_a_generate_tool_has_the_model_schema_and_no_context_parameter(engine: Engine) -> None:

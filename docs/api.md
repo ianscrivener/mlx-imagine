@@ -228,17 +228,21 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `mflux_config.cache_dir` | path | mflux default | Yes | The mflux cache. Sets `MFLUX_CACHE_DIR`. |
 | `mflux_models.local_directory` | path | `~/mlx-imagine/models` | No | The saved mflux models. |
 | `mflux_models.remote_url` | string | `https://huggingface.co/mflux-community` | No | The Hugging Face organization with ready-made mflux models. Not used yet. For a later download of saved mflux models. |
+| `mflux_models.manifest_url` | string | the community manifest URL | No | The JSON Lines file with the mflux-community models. |
+| `mflux_models.cron_minutes` | integer | `5` | No | The minutes between scans of the mflux model directory. `0` turns the scan off. |
 | `mflux_models.allow_download` | boolean | `true` | No | Not used yet. For a later download of saved mflux models. |
 | `mflux_models.allow_delete` | boolean | `true` | No | `false` refuses each delete of a saved model. |
 | `mflux_models.max_models` | integer | none | No | A save fails when the directory holds this number of models. |
 | `mflux_models.max_size_gb` | number | none | No | A save fails when the models use this size. |
 | `huggingface_models.local_directory` | path | `huggingface_hub` default | Yes | The Hugging Face hub cache (the folder with the `models--*` folders). Sets `HF_HUB_CACHE`. |
+| `huggingface_models.cron_minutes` | integer | `5` | No | The minutes between scans of the Hugging Face cache. The manifest sync runs with it. `0` turns both off. |
 | `huggingface_models.allow_hf_access` | boolean | `true` | Yes | `false` sets `HF_HUB_OFFLINE=1`. The server never reaches Hugging Face, and a download request returns `operation_disabled`. |
 | `huggingface_models.allow_model_download` | boolean | `true` | No | `false` lets a download fetch small files only (JSON, text). It skips weight files (`.safetensors`, `.ckpt`, `.gguf`, `.bin`, `.pt`, `.pth`, `.onnx`, `.h5`, `.msgpack`). The job result has `weights_skipped: true`, and `complete` stays `false`. |
 | `huggingface_models.require_model_confirmation` | boolean | `false` | No | `true` makes a download request need `confirm: true`. Without it, the server returns `confirm_required` and the size of the download. Applies only when `allow_model_download` is `true`. |
 | `huggingface_models.allow_delete` | boolean | `true` | No | `false` refuses each delete from the cache. |
 | `huggingface_models.max_models` | integer | none | No | A download of a new model fails when the cache holds this number of mflux models. |
 | `huggingface_models.max_size_gb` | number | none | No | A download of a new model fails when the mflux models in the cache use this size. |
+| `data_directory` | path | `~/mlx-imagine/data` | No | The folder for `mlx-imagine.sqlite` and the manifest copy. |
 | `image_directories.input` | path | `~/mlx-imagine/input` | No | Uploads and input images. |
 | `image_directories.output` | path | `~/mlx-imagine/output` | No | Generated images. |
 | `image_directories.max_upload_mb` | integer | `50` | No | The maximum size of one upload. |
@@ -276,9 +280,90 @@ A request that the config does not allow fails with `operation_disabled` (HTTP 4
 
 ## 4. Models
 
-### 4.1 Supported models
+All model routes start with `/v1/models/mflux`. The name `mflux` leaves room for other model libraries later.
 
-`GET /v1/models/supported` lists all models in the mflux registry:
+### 4.1 The model list
+
+A model has a format and a location.
+
+| Format | Meaning |
+|---|---|
+| `mflux` | Safetensors in the mflux layout, often quantized. |
+| `hf` | Safetensors in the layout of the original Hugging Face repository. |
+
+| Location | Store | Where |
+|---|---|---|
+| local | `hf_cache` | The Hugging Face cache (`huggingface_models.local_directory`). |
+| local | `mflux_dir` | The mflux model directory (`mflux_models.local_directory`). |
+| remote | `mflux_community` | The mflux-community models in the community manifest. |
+| remote | `hub` | All of Hugging Face. A live search. |
+
+`GET /v1/models/mflux` lists models. All filters are optional and combine with AND:
+
+| Query | Values | Meaning |
+|---|---|---|
+| `location` | `local`, `remote` | The default is `local`. |
+| `store` | `hf_cache`, `mflux_dir`, `mflux_community`, `hub` | One store. |
+| `format` | `hf`, `mflux` | One format. |
+| `supported` | `true`, `false` | Models that this server can run. |
+| `family` | text | A model family, for example `flux2`. |
+| `q` | text | A text in the name. The `hub` store needs it. |
+| `limit`, `cursor` | integer, text | A page. The response has `next_cursor` when more models follow. The default limit is 100 (20 for a remote list). |
+
+The views of the table in the roadmap map to requests like this:
+
+| View | Request |
+|---|---|
+| Local, `hf` format | `?location=local&format=hf` |
+| Local mflux format in the Hugging Face cache | `?store=hf_cache&format=mflux` |
+| Local mflux format in the mflux directory | `?store=mflux_dir` |
+| All local mflux format models | `?location=local&format=mflux` |
+| Remote, mflux-community | `?location=remote&store=mflux_community` |
+| Remote, all of Hugging Face | `?store=hub&q=<text>` |
+
+Response:
+
+```json
+{
+  "models": [
+    {
+      "id": "mflux_dir/z-image-turbo-q8",
+      "store": "mflux_dir",
+      "location": "local",
+      "format": "mflux",
+      "repo_id": null,
+      "name": "z-image-turbo-q8",
+      "model_name": "z-image-turbo",
+      "base_model": "z-image-turbo",
+      "family": "z-image",
+      "quant": "q8",
+      "size_gb": 9.1,
+      "complete": null,
+      "supported": true,
+      "loadable": true,
+      "in_manifest": false,
+      "path": "/Users/me/mlx-imagine/models/z-image-turbo-q8",
+      "scanned_at": "2026-10-17T10:12:00Z"
+    }
+  ],
+  "total": 1,
+  "next_cursor": null
+}
+```
+
+- `id` is `<store>/<name>`. For `hf_cache`, `mflux_community` and `hub`, the name is the repository ID, so the id has a second `/`.
+- `supported` is true when the server can run the base model. `loadable` is true when a load request can use this model now. A model in `hf_cache` with format `mflux` is not loadable yet. A saved model without `mlx-imagine.json` is not loadable until you set `base_model`.
+- `in_manifest` is true when the community manifest names the repository.
+- A `hf_cache` model has `revisions` and `last_accessed`. A `mflux_dir` model has `mflux_version`, `saved_at` and `has_sidecar`. A remote model has `url`.
+- The local lists read the database, so they answer at once. They can be up to `cron_minutes` old. `POST /v1/models/mflux/rescan` scans both stores and syncs the manifest now.
+
+`GET /v1/models/mflux/{store}/{name}` returns one model.
+
+The database is `data/mlx-imagine.sqlite`. A thread scans the stores every `cron_minutes` and copies the manifest to `data/models_community_manifest.jsonl` when it changed. The manifest and the `hub` search reach the network only when `huggingface_models.allow_hf_access` is true. The cache scan lists a repository only when the mflux registry or the manifest names it.
+
+### 4.2 Registry and schema
+
+`GET /v1/models/mflux/registry` lists all models in the mflux registry:
 
 ```json
 {
@@ -309,9 +394,9 @@ A request that the config does not allow fails with `operation_disabled` (HTTP 4
 
 `reason` is set when `supported` is `false`. The two reasons are "no command steps" and "stage 2".
 
-### 4.2 Model schema
+#### Model schema
 
-`GET /v1/models/supported/{name}/schema` returns two JSON Schemas for one model. The server makes them from the command's `build_parser()` (scope 3.6).
+`GET /v1/models/mflux/schemas/{name}` returns two JSON Schemas for one model. The server makes them from the command's `build_parser()` (scope 3.6).
 
 ```json
 {
@@ -335,83 +420,22 @@ A request that the config does not allow fails with `operation_disabled` (HTTP 4
 
 The schemas do not include blocked options. The names are the `argparse` destination names. Example: `--image-path` becomes `image_path`.
 
-### 4.3 Hugging Face models
+### 4.3 Download
 
-| Method and path | Description |
-|---|---|
-| `GET /v1/models/huggingface` | List the compatible models in the Hugging Face cache. |
-| `POST /v1/models/huggingface/download` | Download a model. Makes a `download` job. |
-| `DELETE /v1/models/huggingface/{owner}/{repo}?confirm=true` | Delete a model from the cache. |
-
-`GET /v1/models/huggingface` shows only repositories that are in the mflux registry:
-
-```json
-{
-  "models": [
-    {
-      "repo_id": "Tongyi-MAI/Z-Image-Turbo",
-      "model_name": "z-image-turbo",
-      "supported": true,
-      "size_gb": 32.9,
-      "revisions": ["5f0a7c3"],
-      "complete": true,
-      "last_accessed": "2026-10-16T21:04:00Z"
-    }
-  ]
-}
-```
-
-`complete` is `false` when files that the model needs are missing.
-
-`POST /v1/models/huggingface/download` request:
+`POST /v1/models/mflux/downloads` makes a `download` job:
 
 ```json
 { "model": "z-image-turbo", "confirm": true }
 ```
 
 - `model` is a registry name, an alias or a Hugging Face repository ID in the registry.
-- `confirm` is needed only when `huggingface_models.require_model_confirmation` is `true`.
 - The server downloads only the files that the model needs.
-- The job `result` is the model entry from `GET /v1/models/huggingface`.
+- `confirm` is needed only when `huggingface_models.require_model_confirmation` is `true`.
+- The job `result` is the model entry from the list.
 
-`DELETE`:
+### 4.4 Save
 
-- Requires `confirm=true`. Without it, the server returns `confirm_required`.
-- Returns `model_in_use` when the model is loaded, is the target model, or a job in the queue uses it.
-- Uses `huggingface_hub` `delete_revisions()`. Returns HTTP 200 with the freed size.
-
-### 4.4 Saved mflux models
-
-| Method and path | Description |
-|---|---|
-| `GET /v1/models/saved` | List the models in `model_dir`. |
-| `POST /v1/models/saved` | Save and quantize a model. Makes a `save` job. |
-| `PATCH /v1/models/saved/{name}` | Set `base_model` for a model that has no sidecar file. |
-| `DELETE /v1/models/saved/{name}?confirm=true` | Delete a saved model. |
-
-`GET /v1/models/saved`:
-
-```json
-{
-  "models": [
-    {
-      "name": "z-image-turbo-q8",
-      "path": "/Users/me/mlx-imagine/models/z-image-turbo-q8",
-      "model_name": "z-image-turbo",
-      "base_model": "z-image-turbo",
-      "quantize": 8,
-      "mflux_version": "0.23.0",
-      "saved_at": "2026-10-15T10:12:00Z",
-      "size_gb": 9.1,
-      "has_sidecar": true
-    }
-  ]
-}
-```
-
-A model that `mflux-save` wrote has no sidecar file. For that model, `model_name`, `base_model` and `saved_at` are `null`, and `has_sidecar` is `false` (scope 3.10).
-
-`POST /v1/models/saved` request:
+`POST /v1/models/mflux/saves` makes a `save` job:
 
 ```json
 { "model": "z-image-turbo", "quantize": 8, "name": "z-image-turbo-q8" }
@@ -423,7 +447,7 @@ A model that `mflux-save` wrote has no sidecar file. For that model, `model_name
 - The save job unloads the loaded model first, because the server keeps a maximum of one model in memory. After the save, no model is loaded.
 - The server writes `mlx-imagine.json` in the new directory.
 
-`PATCH /v1/models/saved/{name}` request:
+`PATCH /v1/models/mflux/mflux_dir/{name}` sets `base_model` for a model that has no sidecar file:
 
 ```json
 { "base_model": "z-image-turbo" }
@@ -431,7 +455,15 @@ A model that `mflux-save` wrote has no sidecar file. For that model, `model_name
 
 The server writes the sidecar file. It checks that `base_model` is a registry name.
 
-`DELETE` follows the same rules as 4.3. The server deletes only a directory inside `model_dir`.
+### 4.5 Delete
+
+`DELETE /v1/models/mflux/{store}/{name}?confirm=true` deletes a model from the store `hf_cache` or `mflux_dir`.
+
+- Requires `confirm=true`. Without it, the server returns `confirm_required`.
+- Returns `operation_disabled` when `allow_delete` is false for that store.
+- Returns `model_in_use` when the model is loaded, is the target model, or a job in the queue uses it.
+- A delete from `hf_cache` uses `huggingface_hub` `delete_revisions()`. A delete from `mflux_dir` removes only a directory inside `mflux_models.local_directory`.
+- Returns HTTP 200 with the freed size.
 
 ## 5. Loaded model and generation
 
@@ -554,14 +586,12 @@ Each tool calls the same server code as the REST endpoint.
 | `server_status` | `GET /v1/server` | read-only |
 | `get_config` | `GET /v1/config` | read-only |
 | `set_config` | `PATCH /v1/config` | |
-| `list_supported_models` | `GET /v1/models/supported` | read-only |
-| `list_huggingface_models` | `GET /v1/models/huggingface` | read-only |
-| `download_model` | `POST /v1/models/huggingface/download` | |
-| `delete_huggingface_model` | `DELETE /v1/models/huggingface/...` | destructive |
-| `list_saved_models` | `GET /v1/models/saved` | read-only |
-| `save_model` | `POST /v1/models/saved` | |
-| `set_saved_model_base` | `PATCH /v1/models/saved/{name}` | |
-| `delete_saved_model` | `DELETE /v1/models/saved/{name}` | destructive |
+| `list_registry_models` | `GET /v1/models/mflux/registry` | read-only |
+| `list_models` | `GET /v1/models/mflux` | read-only |
+| `download_model` | `POST /v1/models/mflux/downloads` | |
+| `save_model` | `POST /v1/models/mflux/saves` | |
+| `set_saved_model_base` | `PATCH /v1/models/mflux/mflux_dir/{name}` | |
+| `delete_model` | `DELETE /v1/models/mflux/{store}/{name}` | destructive |
 | `load_model` | `POST /v1/model/load` | |
 | `unload_model` | `POST /v1/model/unload` | |
 | `generate_<model>` | `POST /v1/generate` | |

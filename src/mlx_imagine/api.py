@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import Body, FastAPI, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
-from . import __version__, hf_models, saved_models
+from . import __version__
 from .engine import Engine
 from .errors import ApiError, invalid_request
 
@@ -78,11 +78,31 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
     # -- models ------------------------------------------------------------------------------------------------
 
-    @app.get("/v1/models/supported")
-    def supported_models() -> dict[str, Any]:
+    @app.get("/v1/models/mflux")
+    def list_models(
+        location: str | None = Query(None),
+        format: str | None = Query(None),
+        store: str | None = Query(None),
+        supported: bool | None = Query(None),
+        family: str | None = Query(None),
+        q: str | None = Query(None),
+        limit: int | None = Query(None),
+        cursor: str | None = Query(None),
+    ) -> dict[str, Any]:
+        filters = {"location": location, "format": format, "store": store, "supported": supported,
+                   "family": family, "q": q, "limit": limit, "cursor": cursor}  # fmt: skip
+        return engine.catalog.list_models(filters)
+
+    @app.post("/v1/models/mflux/rescan")
+    def rescan() -> dict[str, Any]:
+        engine.catalog.scan_all()
+        return engine.catalog.status()
+
+    @app.get("/v1/models/mflux/registry")
+    def registry_models() -> dict[str, Any]:
         return {"models": [entry.to_dict() for entry in engine.registry.entries().values()]}
 
-    @app.get("/v1/models/supported/{name}/schema")
+    @app.get("/v1/models/mflux/schemas/{name}")
     def model_schema(name: str) -> dict[str, Any]:
         from .options import schemas
 
@@ -90,39 +110,33 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         assert entry.spec is not None
         return {"name": entry.name, **schemas(entry.spec)}
 
-    @app.get("/v1/models/huggingface")
-    def huggingface_models() -> dict[str, Any]:
-        return {"models": hf_models.list_models(engine.registry)}
-
-    @app.post("/v1/models/huggingface/download", status_code=202)
+    @app.post("/v1/models/mflux/downloads", status_code=202)
     def download(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
         model = body.get("model")
         if not isinstance(model, str):
             raise invalid_request("The download request needs 'model'.")
         return engine.queue.describe(engine.submit_download(model, body.get("confirm") is True))
 
-    @app.delete("/v1/models/huggingface/{owner}/{repo}")
-    def delete_huggingface(owner: str, repo: str, confirm: bool = Query(False)) -> dict[str, Any]:
-        return engine.delete_hf_model(f"{owner}/{repo}", confirm)
-
-    @app.get("/v1/models/saved")
-    def saved() -> dict[str, Any]:
-        return {"models": saved_models.list_models(engine.models_dir)}
-
-    @app.post("/v1/models/saved", status_code=202)
+    @app.post("/v1/models/mflux/saves", status_code=202)
     def save(body: dict[str, Any] = Body(...)) -> dict[str, Any]:
         return engine.queue.describe(engine.submit_save(body))
 
-    @app.patch("/v1/models/saved/{name}")
-    def set_base(name: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    @app.get("/v1/models/mflux/{store}/{name:path}")
+    def get_model(store: str, name: str) -> dict[str, Any]:
+        return engine.catalog.get(store, name)
+
+    @app.patch("/v1/models/mflux/{store}/{name:path}")
+    def set_base(store: str, name: str, body: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        if store != "mflux_dir":
+            raise invalid_request("Only a model in the store 'mflux_dir' has a base model.", store=store)
         base_model = body.get("base_model")
         if not isinstance(base_model, str):
             raise invalid_request("The request needs 'base_model'.")
-        return saved_models.set_base_model(engine.registry, engine.models_dir, name, base_model)
+        return engine.set_base_model(name, base_model)
 
-    @app.delete("/v1/models/saved/{name}")
-    def delete_saved(name: str, confirm: bool = Query(False)) -> dict[str, Any]:
-        return engine.delete_saved_model(name, confirm)
+    @app.delete("/v1/models/mflux/{store}/{name:path}")
+    def delete_model(store: str, name: str, confirm: bool = Query(False)) -> dict[str, Any]:
+        return engine.delete_model(store, name, confirm)
 
     # -- loaded model and generation ---------------------------------------------------------------------------
 

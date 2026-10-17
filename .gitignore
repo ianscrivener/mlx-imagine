@@ -27,3 +27,6 @@ CLAUDE.local.md
 .mcp.json
 tmp-PR-content.md
 tmp-PR-body.md
+
+# The model catalog and the manifest copy
+data/

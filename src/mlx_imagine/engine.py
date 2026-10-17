@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from . import hf_models, saved_models
+from .catalog import Catalog
 from .config import Settings
 from .errors import ApiError, conflict, invalid_request, not_found, unprocessable
 from .jobs import Job, JobCancelled, JobQueue
@@ -103,6 +104,7 @@ class Engine:
         self.settings = settings
         self.registry = registry or Registry()
         self.queue = queue or JobQueue(settings.queue_max_length, settings.job_history)
+        self.catalog = Catalog(settings, self.registry)
         self.loaded: Loaded | None = None
         self.target: LoadSpec | None = None
         self.current_job: Job | None = None
@@ -120,8 +122,10 @@ class Engine:
         mx.set_cache_limit(self._default_cache_limit)
         self.apply_memory_limits()
         self.queue.start()
+        self.catalog.start()
 
     def stop(self) -> None:
+        self.catalog.stop()
         self.queue.stop(timeout=5)
 
     def update_settings(self, changes: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -492,7 +496,9 @@ class Engine:
 
     def _do_download(self, job: Job, entry: ModelEntry, with_weights: bool) -> dict[str, Any]:
         with self._job(job):
-            return hf_models.download(self.registry, entry, job, with_weights)
+            result = hf_models.download(self.registry, entry, job, with_weights)
+        self.rescan("hf_cache")
+        return result
 
     def submit_save(self, request: dict[str, Any]) -> Job:
         model = request.get("model")
@@ -537,7 +543,9 @@ class Engine:
             except BaseException:
                 shutil.rmtree(partial, ignore_errors=True)
                 raise
-            return saved_models.describe(final)
+            result = saved_models.describe(final)
+        self.rescan("mflux_dir")
+        return result
 
     def delete_hf_model(self, repo_id: str, confirm: bool) -> dict[str, Any]:
         if not self.settings.hf_allow_delete:
@@ -550,7 +558,9 @@ class Engine:
                 raise conflict(
                     "model_in_use", f"{entry.name} is loaded or a job in the queue uses it.", model=entry.name
                 )
-        return hf_models.delete(self.registry, repo_id)
+        result = hf_models.delete(self.registry, repo_id)
+        self.rescan("hf_cache")
+        return result
 
     def delete_saved_model(self, name: str, confirm: bool) -> dict[str, Any]:
         if not self.settings.mflux_allow_delete:
@@ -558,7 +568,28 @@ class Engine:
         if not confirm:
             raise conflict("confirm_required", "Set confirm to true to delete the model.")
         _, saved = self._models_in_use()
-        return saved_models.delete(self.models_dir, name, saved)
+        result = saved_models.delete(self.models_dir, name, saved)
+        self.rescan("mflux_dir")
+        return result
+
+    def delete_model(self, store: str, name: str, confirm: bool) -> dict[str, Any]:
+        if store == "hf_cache":
+            return self.delete_hf_model(name, confirm)
+        if store == "mflux_dir":
+            return self.delete_saved_model(name, confirm)
+        raise invalid_request("Only a model in the store 'hf_cache' or 'mflux_dir' can be deleted.", store=store)
+
+    def set_base_model(self, name: str, base_model: str) -> dict[str, Any]:
+        result = saved_models.set_base_model(self.registry, self.models_dir, name, base_model)
+        self.rescan("mflux_dir")
+        return result
+
+    def rescan(self, store: str) -> None:
+        """Refresh the catalog rows of one store after a change. A failed scan must not fail the job."""
+        try:
+            self.catalog.scan(store)
+        except Exception:
+            logger.exception("catalog: the scan of %s failed", store)
 
     # -- helpers -------------------------------------------------------------------------------------------------
 

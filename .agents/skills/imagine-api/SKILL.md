@@ -19,8 +19,8 @@ description: Use a running mlx-imagine server to make images. Covers the models,
 
 ## Find the model and its options
 
-1. List the models: `GET /v1/models/supported` (MCP: `list_supported_models`). Use only a model with `"supported": true`. For other models, tell the user the `reason`.
-2. Get the options of the model: `GET /v1/models/supported/<name>/schema`.
+1. List the models: `GET /v1/models/mflux/registry` (MCP: `list_registry_models`). Use only a model with `"supported": true`. For other models, tell the user the `reason`.
+2. Get the options of the model: `GET /v1/models/mflux/schemas/<name>`.
    - `load_schema` has the options of the load request: `quantize`, `low_ram`, `base_model`.
    - `generate_schema` has the options of the generate request.
 3. The option names are the mflux command-line flags with `_` for `-`. For example, `--image-path` is `image_path`.
@@ -43,10 +43,10 @@ description: Use a running mlx-imagine server to make images. Covers the models,
 
 | Task | REST | MCP |
 |---|---|---|
-| Models in the Hugging Face cache | `GET /v1/models/huggingface` | `list_huggingface_models` |
-| Download a model | `POST /v1/models/huggingface/download` | `download_model` |
-| Save a quantized copy | `POST /v1/models/saved` | `save_model` |
-| Saved models | `GET /v1/models/saved` | `list_saved_models` |
+| List models (filters: `location`, `format`, `store`) | `GET /v1/models/mflux` | `list_models` |
+| Download a model | `POST /v1/models/mflux/downloads` | `download_model` |
+| Save a quantized copy | `POST /v1/models/mflux/saves` | `save_model` |
+| Saved models | `GET /v1/models/mflux?store=mflux_dir` | `list_models` |
 | Delete | `DELETE ...?confirm=true` | `delete_*_model` with `confirm: true` |
 
 Ask the user before each delete. A delete frees many gigabytes and cannot be undone.

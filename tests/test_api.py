@@ -99,14 +99,14 @@ def test_the_allow_flags_and_limits_refuse_downloads_and_deletes(client: TestCli
     engine.settings.hf_allow_delete = False
     engine.settings.mflux_allow_delete = False
     engine.settings.hf_allow_access = False
-    assert client.delete("/v1/models/saved/x?confirm=true").json()["error"]["code"] == "operation_disabled"
-    assert client.delete("/v1/models/huggingface/a/b?confirm=true").status_code == 403
-    response = client.post("/v1/models/huggingface/download", json={"model": "z-image-turbo"})
+    assert client.delete("/v1/models/mflux/mflux_dir/x?confirm=true").json()["error"]["code"] == "operation_disabled"
+    assert client.delete("/v1/models/mflux/hf_cache/a/b?confirm=true").status_code == 403
+    response = client.post("/v1/models/mflux/downloads", json={"model": "z-image-turbo"})
     assert response.status_code == 403
     engine.settings.mflux_max_models = 1
     (engine.models_dir / "one" / "vae").mkdir(parents=True)
     (engine.models_dir / "one" / "vae" / "model.safetensors.index.json").write_text("{}")
-    response = client.post("/v1/models/saved", json={"model": "z-image-turbo", "quantize": 8})
+    response = client.post("/v1/models/mflux/saves", json={"model": "z-image-turbo", "quantize": 8})
     assert response.json()["error"]["code"] == "limit_reached"
 
 
@@ -120,12 +120,12 @@ def test_a_quantization_outside_allowed_quantize_is_refused(client: TestClient, 
 
 def test_the_supported_list_and_the_schema_route(client: TestClient) -> None:
     """Bug: the schema route serves a model the server cannot run, or omits the generate schema."""
-    models = {model["name"]: model for model in client.get("/v1/models/supported").json()["models"]}
+    models = {model["name"]: model for model in client.get("/v1/models/mflux/registry").json()["models"]}
     assert models["z-image-turbo"]["supported"] is True
     assert models["dev"]["supported"] is False
-    schema = client.get("/v1/models/supported/z-image-turbo/schema").json()
+    schema = client.get("/v1/models/mflux/schemas/z-image-turbo").json()
     assert schema["generate_schema"]["required"] == ["prompt"]
-    assert client.get("/v1/models/supported/dev/schema").status_code == 422
+    assert client.get("/v1/models/mflux/schemas/dev").status_code == 422
 
 
 def test_the_event_stream_ends_with_the_final_job(client: TestClient) -> None:
@@ -141,7 +141,7 @@ def test_the_event_stream_ends_with_the_final_job(client: TestClient) -> None:
 @pytest.mark.parametrize("name", [123, ["a"], None])
 def test_a_save_name_that_is_not_a_string_is_a_400_not_a_500(client: TestClient, name) -> None:
     """Bug: a numeric save name reaches safe_name's `"/" in name`, raises TypeError and returns a bare 500."""
-    response = client.post("/v1/models/saved", json={"model": "z-image-turbo", "quantize": 8, "name": name})
+    response = client.post("/v1/models/mflux/saves", json={"model": "z-image-turbo", "quantize": 8, "name": name})
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_request"
 
@@ -151,11 +151,11 @@ def test_a_download_asks_for_confirmation_with_the_size(client: TestClient, engi
     gigabytes with no question."""
     engine.settings.hf_require_model_confirmation = True
     monkeypatch.setattr("mlx_imagine.hf_models.estimate_bytes", lambda entry: 4_200_000_000)
-    response = client.post("/v1/models/huggingface/download", json={"model": "z-image-turbo"})
+    response = client.post("/v1/models/mflux/downloads", json={"model": "z-image-turbo"})
     assert response.status_code == 409 and response.json()["error"]["code"] == "confirm_required"
     assert "4.2 GB" in response.json()["error"]["message"]
     engine.settings.hf_allow_model_download = False
-    assert client.post("/v1/models/huggingface/download", json={"model": "z-image-turbo"}).status_code == 202
+    assert client.post("/v1/models/mflux/downloads", json={"model": "z-image-turbo"}).status_code == 202
 
 
 def test_offline_mode_follows_allow_hf_access(monkeypatch) -> None:

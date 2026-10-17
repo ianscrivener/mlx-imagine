@@ -40,7 +40,7 @@ def build_mcp(engine: Engine) -> Any:
     mcp = MCPServer(
         "mlx-imagine",
         instructions=(
-            "Generate images with mflux on this machine. Call list_supported_models, then load_model, then the "
+            "Generate images with mflux on this machine. Call list_registry_models, then load_model, then the "
             "generate tool of the loaded model. One job runs at a time. Jobs that take long return a job ID: "
             "call get_job to read the result."
         ),
@@ -101,23 +101,27 @@ def build_mcp(engine: Engine) -> Any:
         return {"applied": applied, "restart_required": restart}
 
     @mcp.tool(annotations=_annotations(**READ_ONLY))
-    def list_supported_models() -> list[dict[str, Any]]:
+    def list_registry_models() -> list[dict[str, Any]]:
         """All mflux models, with `supported` true for the models this server can run."""
         return [entry.to_dict() for entry in engine.registry.entries().values()]
 
     @mcp.tool(annotations=_annotations(**READ_ONLY))
-    def list_huggingface_models() -> list[dict[str, Any]]:
-        """The mflux models in the local Hugging Face cache."""
-        from . import hf_models
-
-        return hf_models.list_models(engine.registry)
-
-    @mcp.tool(annotations=_annotations(**READ_ONLY))
-    def list_saved_models() -> list[dict[str, Any]]:
-        """The models that mflux saved to the model directory."""
-        from . import saved_models
-
-        return saved_models.list_models(engine.models_dir)
+    def list_models(
+        location: Literal["local", "remote"] | None = None,
+        format: Literal["hf", "mflux"] | None = None,
+        store: Literal["hf_cache", "mflux_dir", "mflux_community", "hub"] | None = None,
+        supported: bool | None = None,
+        family: str | None = None,
+        q: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """List models. No filter: the local models. `store` hf_cache is the Hugging Face cache and mflux_dir is
+        the mflux model directory. `location` remote with `store` mflux_community lists the community
+        manifest. `store` hub searches the whole Hub and needs `q`."""
+        filters = {"location": location, "format": format, "store": store, "supported": supported,
+                   "family": family, "q": q, "limit": limit, "cursor": cursor}  # fmt: skip
+        return call(engine.catalog.list_models, filters)
 
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=True))
     async def download_model(
@@ -137,19 +141,13 @@ def build_mcp(engine: Engine) -> Any:
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=False))
     def set_saved_model_base(name: str, base_model: str) -> dict[str, Any]:
         """Record which mflux model a saved model is. Use it for a model that mflux-save wrote."""
-        from . import saved_models
-
-        return call(saved_models.set_base_model, engine.registry, engine.models_dir, name, base_model)
+        return call(engine.set_base_model, name, base_model)
 
     @mcp.tool(annotations=_annotations(**DESTRUCTIVE))
-    def delete_huggingface_model(repo_id: str, confirm: bool) -> dict[str, Any]:
-        """Delete a model from the Hugging Face cache. Set confirm to true."""
-        return call(engine.delete_hf_model, repo_id, confirm)
-
-    @mcp.tool(annotations=_annotations(**DESTRUCTIVE))
-    def delete_saved_model(name: str, confirm: bool) -> dict[str, Any]:
-        """Delete a saved model from the model directory. Set confirm to true."""
-        return call(engine.delete_saved_model, name, confirm)
+    def delete_model(store: Literal["hf_cache", "mflux_dir"], name: str, confirm: bool) -> dict[str, Any]:
+        """Delete a model from the Hugging Face cache (name is the repo ID) or from the mflux model directory
+        (name is the folder name). Set confirm to true."""
+        return call(engine.delete_model, store, name, confirm)
 
     # -- loaded model and jobs ---------------------------------------------------------------------------------
 
