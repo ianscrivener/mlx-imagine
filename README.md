@@ -3,7 +3,7 @@
 > Local AI image creation on your Mac M-Series computer.
 > It is AI-first: your AI agent drives it over MCP.
 > It also has a REST API for programmatic image generation.
-> builds upon [`MFlux`](https://github.com/mflux-community/mflux)
+> It builds on [`MFlux`](https://github.com/mflux-community/mflux)
 
 
 
