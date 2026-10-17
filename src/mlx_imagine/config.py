@@ -77,6 +77,10 @@ class Settings:
     require_api_token: bool = False
     api_token: str | None = None
     use_tls: bool = False
+    # services
+    api_enable: bool = True
+    mcp_enable: bool = True
+    swagger_enable: bool = True
     # queue
     queue_max_length: int = 100
     job_history: int = 200
@@ -137,6 +141,9 @@ FIELDS: dict[tuple[str | None, str], tuple[str, tuple[type, ...]]] = {
     ("server", "require_api_token"): ("require_api_token", (bool,)),
     ("server", "api_token"): ("api_token", (str, type(None))),
     ("server", "use_tls"): ("use_tls", (bool,)),
+    ("services", "api_enable"): ("api_enable", (bool,)),
+    ("services", "mcp_enable"): ("mcp_enable", (bool,)),
+    ("services", "swagger_enable"): ("swagger_enable", (bool,)),
     ("queue", "queue_max_length"): ("queue_max_length", (int,)),
     ("queue", "job_history"): ("job_history", (int,)),
     (None, "data_directory"): ("data_dir", (str,)),
@@ -149,7 +156,19 @@ TYPES = {field: accepted for field, accepted in FIELDS.values()}
 
 # A change to one of these takes effect only after a restart (docs/scope.md 3.9).
 RESTART_FIELDS = frozenset(
-    {"hf_hub_cache", "hf_allow_access", "mflux_cache_dir", "host", "port", "require_api_token", "api_token", "use_tls"}
+    {
+        "hf_hub_cache",
+        "hf_allow_access",
+        "api_enable",
+        "mcp_enable",
+        "swagger_enable",
+        "mflux_cache_dir",
+        "host",
+        "port",
+        "require_api_token",
+        "api_token",
+        "use_tls",
+    }
 )
 PATH_FIELDS = frozenset({"hf_hub_cache", "mflux_cache_dir", "model_dir", "input_dir", "output_dir", "data_dir"})
 POSITIVE_FIELDS = frozenset(

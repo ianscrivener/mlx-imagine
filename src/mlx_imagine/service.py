@@ -8,6 +8,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -96,6 +97,47 @@ def uninstall(home: Path | None = None) -> Path:
     _launchctl("bootout", f"{_domain()}/{LABEL}", check=False)
     path.unlink()
     return path
+
+
+def _loaded() -> bool:
+    return _launchctl("print", f"{_domain()}/{LABEL}", check=False).returncode == 0
+
+
+def start(config_file: Path, home: Path | None = None) -> str:
+    """Start the server. Installs the LaunchAgent first when it is not installed."""
+    require_macos()
+    if not plist_path(home).exists():
+        install(config_file, home=home)
+        return "installed and started"
+    if _loaded():
+        return "already running"
+    _launchctl("bootstrap", _domain(), str(plist_path(home)))
+    return "started"
+
+
+def stop(home: Path | None = None) -> str:
+    """Stop the server. The LaunchAgent stays installed, so `start` brings it back."""
+    require_macos()
+    if not plist_path(home).exists():
+        raise ServiceError(f"The LaunchAgent is not installed: {plist_path(home)} does not exist.")
+    if not _loaded():
+        return "already stopped"
+    _launchctl("bootout", f"{_domain()}/{LABEL}")
+    # bootout returns before the server has exited. Wait, or a start right after it sees a job that is going away.
+    for _ in range(100):
+        if not _loaded():
+            break
+        time.sleep(0.1)
+    return "stopped"
+
+
+def restart(config_file: Path, home: Path | None = None) -> str:
+    """Restart the server, so it reads new code and a new config file."""
+    require_macos()
+    if not plist_path(home).exists() or not _loaded():
+        return start(config_file, home)
+    _launchctl("kickstart", "-k", f"{_domain()}/{LABEL}")
+    return "restarted"
 
 
 def status(health_url: str, home: Path | None = None) -> dict[str, Any]:

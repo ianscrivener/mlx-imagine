@@ -92,6 +92,11 @@ serve-api config=config:
 serve-mcp config=config:
     uv run mlx-imagine --config {{ config }} mcp
 
+# Manage the macOS LaunchAgent: start | stop | restart | status | install | uninstall
+mac-service action config=config:
+    @case "{{ action }}" in start|stop|restart|status|install|uninstall) ;; *) echo "Use: just mac-service start|stop|restart|status|install|uninstall"; exit 1;; esac
+    uv run mlx-imagine --config {{ config }} service {{ action }}
+
 # Show the health and state of a running server
 serve-status port="8765":
     @curl -sf http://127.0.0.1:{{ port }}/v1/server | {{ python }} -m json.tool || echo "No server at port {{ port }}."

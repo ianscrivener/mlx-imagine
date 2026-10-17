@@ -242,6 +242,9 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `huggingface_models.allow_delete` | boolean | `true` | No | `false` refuses each delete from the cache. |
 | `huggingface_models.max_models` | integer | none | No | A download of a new model fails when the cache holds this number of mflux models. |
 | `huggingface_models.max_size_gb` | number | none | No | A download of a new model fails when the mflux models in the cache use this size. |
+| `services.api_enable` | boolean | `true` | Yes | `false` turns off the REST routes under `/v1`, except `/v1/health`. They return `api_disabled` (HTTP 404). |
+| `services.mcp_enable` | boolean | `true` | Yes | `false` does not start the MCP server at `/mcp`. |
+| `services.swagger_enable` | boolean | `true` | Yes | `true` serves the Swagger page at `/docs`, ReDoc at `/redoc` and the schema at `/openapi.json`. When a token is on, these paths need no token. The page has an Authorize button for it. |
 | `data_directory` | path | `~/mlx-imagine/data` | No | The folder for `mlx-imagine.sqlite` and the manifest copy. |
 | `image_directories.input` | path | `~/mlx-imagine/input` | No | Uploads and input images. |
 | `image_directories.output` | path | `~/mlx-imagine/output` | No | Generated images. |
@@ -352,7 +355,7 @@ Response:
 ```
 
 - `id` is `<store>/<name>`. For `hf_cache`, `mflux_community` and `hub`, the name is the repository ID, so the id has a second `/`.
-- `supported` is true when the server can run the base model. `loadable` is true when a load request can use this model now. A model in `hf_cache` with format `mflux` is not loadable yet. A saved model without `mlx-imagine.json` is not loadable until you set `base_model`.
+- `supported` is true when the server can run the base model. `loadable` is true when a load request can use this model now. A model in `hf_cache` with format `mflux` is loadable when its newest snapshot has the mflux layout. A saved model without `mlx-imagine.json` is not loadable until you set `base_model`.
 - `in_manifest` is true when the community manifest names the repository.
 - A `hf_cache` model has `revisions` and `last_accessed`. A `mflux_dir` model has `mflux_version`, `saved_at` and `has_sidecar`. A remote model has `url`.
 - The local lists read the database, so they answer at once. They can be up to `cron_minutes` old. `POST /v1/models/mflux/rescan` scans both stores and syncs the manifest now.
@@ -483,9 +486,9 @@ The server writes the sidecar file. It checks that `base_model` is a registry na
 
 | Field | Required | Description |
 |---|---|---|
-| `model` | Yes | A registry name, an alias, or the name of a saved model. |
-| `base_model` | No | Required only for a saved model without a sidecar file. |
-| `quantize` | No | The default is `default_quantize`. Not allowed for a saved model, which is already quantized. |
+| `model` | Yes | A registry name, an alias or the name of a saved model. It can also be the repository ID of an mflux-format model in the Hugging Face cache, for example `mflux-community/flux2-klein-9b-kv-mflux-q4`. |
+| `base_model` | No | Required for a saved model without a sidecar file. For a Hugging Face cache model, the community manifest gives it, so it is needed only when the manifest does not name the model. |
+| `quantize` | No | The default is `default_quantize`. Not allowed for a saved model or an mflux-format model, which is already quantized. |
 | `low_ram` | No | Default `false`. See below. |
 | other options | No | The other options in `load_schema` (4.2). |
 
@@ -628,6 +631,9 @@ These commands are not part of the API. They are listed here to show the full su
 | `mlx-imagine mcp` | Start the MCP server on stdio (6.1). |
 | `mlx-imagine service install [--force]` | macOS only. Install the LaunchAgent (scope 3.17). |
 | `mlx-imagine service uninstall` | macOS only. Stop the server and delete the LaunchAgent. |
+| `mlx-imagine service start` | macOS only. Start the server. Installs the LaunchAgent first when needed. |
+| `mlx-imagine service stop` | macOS only. Stop the server. The LaunchAgent stays installed. |
+| `mlx-imagine service restart` | macOS only. Restart the server. |
 | `mlx-imagine service status` | macOS only. Show the LaunchAgent state and the server health. |
 
 The REST API and the MCP server cannot install or uninstall the service.

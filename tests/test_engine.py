@@ -231,3 +231,26 @@ def test_image_paths_must_be_strings(engine: Engine) -> None:
     with pytest.raises(ApiError) as caught:
         engine.submit_generate({"prompt": "a cat", "image_paths": [123]})
     assert caught.value.code == "invalid_request"
+
+
+def test_an_mflux_format_model_in_the_hf_cache_loads_by_repo_id(engine: Engine) -> None:
+    """Bug: an mflux-format repository in the Hugging Face cache cannot load, so the user must copy it into the
+    mflux model directory first."""
+    import os
+
+    snapshot = Path(os.environ["HF_HUB_CACHE"]) / "models--mflux-community--zit-q8" / "snapshots" / "abc123"
+    (snapshot / "transformer").mkdir(parents=True)
+    (snapshot / "transformer" / saved_models.INDEX).write_text('{"metadata": {"quantization_level": "8"}}')
+    with pytest.raises(ApiError) as caught:
+        engine.submit_load({"model": "mflux-community/zit-q8"})
+    assert caught.value.code == "base_model_required"
+    with pytest.raises(ApiError) as caught:
+        engine.submit_load({"model": "mflux-community/zit-q8", "base_model": "z-image-turbo", "quantize": 4})
+    assert caught.value.code == "invalid_request"
+    job = wait_for(engine.submit_load({"model": "mflux-community/zit-q8", "base_model": "z-image-turbo"}))
+    assert job.state == "succeeded", job.error
+    assert engine.loaded.spec.hub_repo == "mflux-community/zit-q8"
+    assert Path(FakeModel.instances[-1].args.model_path).resolve() == snapshot.resolve()
+    with pytest.raises(ApiError) as caught:
+        engine.delete_hf_model("mflux-community/zit-q8", confirm=True)
+    assert caught.value.code == "model_in_use"

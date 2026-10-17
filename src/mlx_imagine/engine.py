@@ -45,6 +45,9 @@ class LoadSpec:
     quantize: int | None
     low_ram: bool
     saved_name: str | None = None
+    # An mflux-format model in the Hugging Face cache: its repository ID and its snapshot folder.
+    hub_repo: str | None = None
+    model_path: Path | None = None
 
     @property
     def spec(self) -> CommandSpec:
@@ -53,7 +56,7 @@ class LoadSpec:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "name": self.saved_name or self.entry.name,
+            "name": self.saved_name or self.hub_repo or self.entry.name,
             "model_name": self.entry.name,
             "saved": self.saved_name is not None,
             "quantize": self.quantize,
@@ -189,6 +192,12 @@ class Engine:
             "restart_required": bool(self.restart_required),
         }
 
+    def _hub_repos_in_use(self) -> set[str]:
+        specs = [s for s in (self.target, self.loaded.spec if self.loaded else None) if s]
+        jobs = self.queue.waiting() + ([self.queue.running] if self.queue.running else [])
+        specs += [job.context["load_spec"] for job in jobs if isinstance(job.context.get("load_spec"), LoadSpec)]
+        return {spec.hub_repo.lower() for spec in specs if spec.hub_repo}
+
     def _models_in_use(self) -> tuple[set[str], set[str]]:
         """(registry names, saved model names) that are loaded, are the target, or that a waiting job uses."""
         names, saved = set(), set()
@@ -213,7 +222,14 @@ class Engine:
             raise invalid_request("The load request needs 'model'.")
         base_model = request.pop("base_model", None)
         saved_name = self._saved_name(model)
-        if saved_name is not None:
+        hub = self._hub_mflux_model(model)
+        if hub is not None:
+            if "quantize" in request:
+                raise invalid_request("An mflux-format model is already quantized. Do not give 'quantize'.")
+            snapshot, source = hub
+            entry = self.registry.supported(base_model or self._hub_base_model(model, source))
+            argv = ["--model", str(snapshot), "--base-model", entry.name]
+        elif saved_name is not None:
             if "quantize" in request:
                 raise invalid_request("A saved model is already quantized. Do not give 'quantize'.")
             entry = self.registry.supported(saved_models.base_model_of(self.models_dir, saved_name, base_model))
@@ -236,6 +252,8 @@ class Engine:
             quantize=request.get("quantize"),
             low_ram=bool(request.get("low_ram", False)),
             saved_name=saved_name,
+            hub_repo=model if hub is not None else None,
+            model_path=hub[0] if hub is not None else None,
         )
         self._validate(load_spec, [])
         return load_spec
@@ -246,6 +264,27 @@ class Engine:
             allowed = self.settings.allowed_quantize
             label = "bf16 (no quantization)" if quantize is None else f"q{quantize}"
             raise unprocessable("option_invalid", f"{label} is not in mflux_config.allowed_quantize ({allowed}).")
+
+    def _hub_mflux_model(self, model: str) -> tuple[Path, str | None] | None:
+        """(snapshot folder, source repository) when `model` is an mflux-format repository in the Hugging Face
+        cache, else None. The path comes from the cache scan, never from the client."""
+        if "/" not in model or model.startswith(".") or self.registry.by_repo(model):
+            return None
+        snapshot = hf_models.snapshot_path(model)
+        if snapshot is None or not saved_models.is_saved_model(snapshot):
+            return None
+        return snapshot, self.catalog.quant_source(model)
+
+    def _hub_base_model(self, model: str, source: str | None) -> str:
+        entries = self.registry.by_repo(source) if source else []
+        entry = next((e for e in entries if e.supported), entries[0] if entries else None)
+        if entry is None:
+            raise unprocessable(
+                "base_model_required",
+                f"The manifest does not name the base model of {model!r}. Give base_model.",
+                model=model,
+            )
+        return entry.name
 
     def _saved_name(self, model: str) -> str | None:
         """The saved model a load request names, or None for a registry name."""
@@ -331,7 +370,7 @@ class Engine:
         free_memory()
 
     def _check_cached(self, load_spec: LoadSpec) -> None:
-        if load_spec.saved_name is not None:
+        if load_spec.saved_name is not None or load_spec.hub_repo is not None:
             return
         complete = hf_models.is_complete(load_spec.entry)
         if complete is False:
@@ -358,6 +397,8 @@ class Engine:
 
     def _estimate_bytes(self, load_spec: LoadSpec) -> int | None:
         """The weight size on disk, scaled for quantization. A rough guide, not an exact figure."""
+        if load_spec.model_path is not None:
+            return saved_models._size(load_spec.model_path)
         if load_spec.saved_name is not None:
             return saved_models._size(self.models_dir / load_spec.saved_name)
         for model in hf_models.list_models(self.registry):
@@ -555,6 +596,8 @@ class Engine:
         if not confirm:
             raise conflict("confirm_required", "Set confirm to true to delete the model.")
         names, _ = self._models_in_use()
+        if repo_id.lower() in self._hub_repos_in_use():
+            raise conflict("model_in_use", f"{repo_id} is loaded or a job in the queue uses it.", repo_id=repo_id)
         for entry in self.registry.by_repo(repo_id):
             if entry.name in names:
                 raise conflict(

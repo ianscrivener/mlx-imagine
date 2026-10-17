@@ -66,3 +66,18 @@ def test_the_service_commands_refuse_linux(monkeypatch) -> None:
     monkeypatch.setattr(service.sys, "platform", "linux")
     with pytest.raises(service.ServiceError, match="macOS only"):
         service.require_macos()
+
+
+def test_start_installs_once_stop_keeps_the_plist_and_restart_kicks(launchctl, tmp_path, monkeypatch) -> None:
+    """Bug: stop deletes the LaunchAgent, or restart starts a second copy of the server."""
+    monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
+    config = tmp_path / "config.toml"
+    assert service.start(config, home=tmp_path) == "installed and started"
+    assert service.start(config, home=tmp_path) == "already running"  # the fake `print` says the job is loaded
+    assert service.restart(config, home=tmp_path) == "restarted"
+    assert launchctl[-1][:2] == ["kickstart", "-k"]
+    assert service.stop(home=tmp_path) == "stopped"
+    assert "bootout" in [call[0] for call in launchctl]
+    assert service.plist_path(tmp_path).exists()
+    with pytest.raises(service.ServiceError, match="not installed"):
+        service.stop(home=tmp_path / "other")

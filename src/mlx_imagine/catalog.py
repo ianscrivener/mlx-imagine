@@ -213,7 +213,11 @@ class Catalog:
             if is_quant:
                 source = self.registry.by_repo(known["source_repo"])
                 entry = next((e for e in source if e.supported), source[0] if source else None)
-            complete = None if is_quant or entry is None else hf_models.is_complete(entry)
+            snapshot = hf_models.latest_snapshot(repo)
+            if is_quant:
+                complete = snapshot is not None and saved_models.is_saved_model(snapshot)
+            else:
+                complete = None if entry is None else hf_models.is_complete(entry)
             extra = {
                 "revisions": sorted(revision.commit_hash[:7] for revision in repo.revisions),
                 "last_accessed": hf_models._iso(repo.last_accessed),
@@ -224,7 +228,7 @@ class Catalog:
                     model_name=entry.name if entry else None, family=known["family"] if known else None,
                     quant=known["quant"] if is_quant else None, size_gb=round(repo.size_on_disk / 1000**3, 2),
                     complete=complete, supported=bool(entry and entry.supported),
-                    loadable=bool(entry and entry.supported and not is_quant and complete),
+                    loadable=bool(entry and entry.supported and complete),
                     in_manifest=known is not None, extra=json.dumps(extra),
                 )
             )  # fmt: skip
@@ -247,6 +251,14 @@ class Catalog:
                 )
             )  # fmt: skip
         return rows
+
+    def quant_source(self, repo_id: str) -> str | None:
+        """The source repository that the manifest gives for a quantization repository, or None."""
+        with self._lock, self._db() as connection:
+            row = connection.execute(
+                "SELECT source_repo FROM manifest WHERE kind = 'quant' AND lower(repo_id) = ?", (repo_id.lower(),)
+            ).fetchone()
+        return row["source_repo"] if row else None
 
     def _known(self, name: str) -> bool:
         try:

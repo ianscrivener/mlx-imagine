@@ -29,6 +29,9 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--force", action="store_true", help="Install again over an installed LaunchAgent.")
     service_commands.add_parser("uninstall", help="Stop the server and delete the LaunchAgent.")
     service_commands.add_parser("status", help="Show the LaunchAgent state and the server health.")
+    service_commands.add_parser("start", help="Start the server. Install the LaunchAgent first when needed.")
+    service_commands.add_parser("stop", help="Stop the server. Keep the LaunchAgent installed.")
+    service_commands.add_parser("restart", help="Restart the server.")
     return parser
 
 
@@ -77,9 +80,12 @@ def _serve(settings: config.Settings) -> None:
     from .mcp_server import build_mcp
 
     engine = Engine(settings)
-    mcp = build_mcp(engine)
-    mcp_app = mcp.streamable_http_app(streamable_http_path="/mcp", host=settings.host)
-    app = create_app(engine, mcp_app=mcp_app, mcp_lifespan=mcp.session_manager.run)
+    if settings.mcp_enable:
+        mcp = build_mcp(engine)
+        mcp_app = mcp.streamable_http_app(streamable_http_path="/mcp", host=settings.host)
+        app = create_app(engine, mcp_app=mcp_app, mcp_lifespan=mcp.session_manager.run)
+    else:
+        app = create_app(engine)
     uvicorn.run(app, host=settings.host, port=settings.port, log_level="info")
 
 
@@ -109,6 +115,12 @@ def _service(args: argparse.Namespace, settings: config.Settings, config_file: P
         elif args.service_command == "uninstall":
             path = service.uninstall()
             print(f"Stopped the server and deleted {path}.")
+        elif args.service_command in ("start", "stop", "restart"):
+            if args.service_command == "stop":
+                result = service.stop()
+            else:
+                result = getattr(service, args.service_command)(config_file)
+            print(f"The server is {result}.")
         else:
             print(json.dumps(service.status(f"http://{settings.host}:{settings.port}/v1/health"), indent=2))
     except service.ServiceError as exc:

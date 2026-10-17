@@ -28,6 +28,11 @@ image_directories:
   output: ./output
   max_upload_mb: 50
 
+services:
+  api_enable: true
+  mcp_enable: true
+  swagger_enable: true
+
 server:
   host: 127.0.0.1
   port: 8765

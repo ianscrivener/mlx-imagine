@@ -10,14 +10,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Body, FastAPI, File, Query, Request, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.security import HTTPBearer
 
 from . import __version__
 from .engine import Engine
 from .errors import ApiError, invalid_request
 
 PUBLIC_PATHS = frozenset({"/v1/health"})
+# The Swagger page and its schema load in a browser, which cannot send the token header. The Authorize button
+# of the page sends it on each call.
+DOCS_PATHS = frozenset({"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"})
 UPLOAD_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 SSE_KEEPALIVE_SECONDS = 15
 
@@ -39,7 +43,18 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         finally:
             engine.stop()
 
-    app = FastAPI(title="mlx-imagine", version=__version__, lifespan=lifespan)
+    swagger = engine.settings.swagger_enable
+    app = FastAPI(
+        title="mlx-imagine",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/docs" if swagger else None,
+        redoc_url="/redoc" if swagger else None,
+        openapi_url="/openapi.json" if swagger else None,
+        # Adds the bearer scheme to the schema, so the Swagger page shows an Authorize button. The middleware
+        # below checks the token; this dependency only describes it.
+        dependencies=[Depends(HTTPBearer(auto_error=False))] if swagger else [],
+    )
 
     @app.exception_handler(ApiError)
     async def _api_error(request: Request, exc: ApiError) -> JSONResponse:
@@ -47,8 +62,12 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
     @app.middleware("http")
     async def _auth(request: Request, call_next: Any) -> Any:
+        path = request.url.path
+        if not engine.settings.api_enable and path.startswith("/v1/") and path not in PUBLIC_PATHS:
+            error = ApiError("api_disabled", 404, "The REST API is off: services.api_enable is false.")
+            return JSONResponse(_error_body(error), status_code=404)
         token = engine.settings.token
-        if token and request.url.path not in PUBLIC_PATHS:
+        if token and path not in PUBLIC_PATHS and not (swagger and path in DOCS_PATHS):
             given = request.headers.get("authorization", "")
             if not hmac.compare_digest(given.encode(), f"Bearer {token}".encode()):
                 error = ApiError("unauthorized", 401, "The token is missing or not correct.")

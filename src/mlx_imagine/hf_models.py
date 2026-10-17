@@ -1,6 +1,7 @@
 """The compatible models in the local Hugging Face cache: list, download and delete (docs/api.md 4.3)."""
 
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from tqdm.auto import tqdm as tqdm_auto
@@ -27,6 +28,18 @@ def _cache_repos() -> dict[str, Any]:
     except CacheNotFound:
         return {}
     return {repo.repo_id.lower(): repo for repo in info.repos if repo.repo_type == "model"}
+
+
+def latest_snapshot(repo: Any) -> Path | None:
+    """The folder of the newest revision of a cached repository."""
+    if not repo.revisions:
+        return None
+    return Path(max(repo.revisions, key=lambda revision: revision.last_modified).snapshot_path)
+
+
+def snapshot_path(repo_id: str) -> Path | None:
+    repo = _cache_repos().get(repo_id.lower())
+    return latest_snapshot(repo) if repo is not None else None
 
 
 def is_complete(entry: ModelEntry) -> bool | None:

@@ -167,3 +167,26 @@ def test_offline_mode_follows_allow_hf_access(monkeypatch) -> None:
     assert "HF_HUB_OFFLINE" not in os.environ
     apply_environment(Settings(hf_allow_access=False))
     assert os.environ["HF_HUB_OFFLINE"] == "1"
+
+
+def test_the_swagger_page_follows_the_services_settings_and_needs_no_token(client: TestClient, engine: Engine) -> None:
+    """Bug: /docs answers 401 when a token is on, or stays up when swagger_enable is false."""
+    engine.settings.require_api_token = True
+    engine.settings.api_token = "secret"
+    assert client.get("/docs").status_code == 200
+    schema = client.get("/openapi.json").json()
+    assert "HTTPBearer" in schema["components"]["securitySchemes"]
+    assert client.get("/v1/server").status_code == 401
+    engine.settings.api_enable = False
+    response = client.get("/v1/server", headers={"authorization": "Bearer secret"})
+    assert response.status_code == 404 and response.json()["error"]["code"] == "api_disabled"
+    assert client.get("/v1/health").status_code == 200
+
+
+def test_swagger_enable_false_removes_the_docs_routes(engine: Engine) -> None:
+    """Bug: swagger_enable is false, and /docs or /openapi.json still answers."""
+    from mlx_imagine.api import create_app
+
+    engine.settings.swagger_enable = False
+    off = TestClient(create_app(engine))
+    assert off.get("/docs").status_code == 404 and off.get("/openapi.json").status_code == 404

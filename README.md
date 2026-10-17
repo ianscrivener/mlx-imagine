@@ -101,6 +101,7 @@ For a client that uses stdio, run `mlx-imagine mcp`. The command stops with an e
 ```sh
 mlx-imagine service install
 mlx-imagine service status
+mlx-imagine service start    # also: stop, restart
 mlx-imagine service uninstall
 ```
 
