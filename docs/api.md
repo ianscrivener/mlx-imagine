@@ -242,6 +242,9 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `huggingface_models.allow_delete` | boolean | `true` | No | `false` refuses each delete from the cache. |
 | `huggingface_models.max_models` | integer | none | No | A download of a new model fails when the cache holds this number of mflux models. |
 | `huggingface_models.max_size_gb` | number | none | No | A download of a new model fails when the mflux models in the cache use this size. |
+| `image_metadata.exif_enabled` | boolean | `true` | No | Embed the generation data in the EXIF UserComment of each generated PNG. A generate request can set `exif_enabled` for one request. |
+| `image_metadata.iptc_enabled` | boolean | `true` | No | Embed the IPTC and XMP data (prompt, seed, model) in each generated PNG. A generate request can set `iptc_enabled` for one request. |
+| `image_metadata.json_sidecar_enabled` | boolean | `true` | No | Write a `.metadata.json` file next to each generated PNG. A generate request can set `json_sidecar_enabled` for one request. |
 | `services.api_enable` | boolean | `true` | Yes | `false` turns off the REST routes under `/v1`, except `/v1/health`. They return `api_disabled` (HTTP 404). |
 | `services.mcp_enable` | boolean | `true` | Yes | `false` does not start the MCP server at `/mcp`. |
 | `services.swagger_enable` | boolean | `true` | Yes | `true` serves the Swagger page at `/docs`, ReDoc at `/redoc` and the schema at `/openapi.json`. When a token is on, these paths need no token. The page has an Authorize button for it. |
@@ -531,6 +534,7 @@ Rules:
 - The server builds an `argparse.Namespace` from the body with the command's `build_parser()`. It catches `SystemExit` and returns `option_invalid`.
 - A blocked option returns `option_blocked`. A load option returns `option_for_load`.
 - `seed` is a list. One job makes one image for each seed. If `seed` is missing, the server picks one random seed.
+- `exif_enabled`, `iptc_enabled` and `json_sidecar_enabled` are optional booleans. A value replaces the `image_metadata` setting for this request. They are not mflux options, and they show in the generate schema and in the generate tools of MCP.
 - `image_path` is an upload ID (5.3), or a path inside `input_dir`. A different path returns `path_not_allowed`.
 
 Blocked options in stage 1: `output`, `prompt_file`, `config_from_metadata`, `stepwise_image_output_dir`, `battery_percentage_stop_limit`, `metadata`, `model_path`, and all LoRA options.

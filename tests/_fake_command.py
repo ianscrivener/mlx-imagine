@@ -29,6 +29,9 @@ class FakeImage:
         self.prompt = prompt
         self.image = PIL.Image.new("RGB", (width // 64 or 1, height // 64 or 1))
 
+    def _get_metadata(self) -> dict[str, Any]:
+        return {"seed": self.seed, "prompt": self.prompt, "model": "z-image-turbo"}
+
     def save(self, path: str, export_json_metadata: bool = False, overwrite: bool = False) -> None:
         self.image.save(path)
         if export_json_metadata:

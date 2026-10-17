@@ -14,6 +14,7 @@ from mflux.models.common.resolution.path_resolution import PathResolution
 from mflux.models.flux2.cli import flux2_generate
 from mflux.models.flux3.cli import flux3_generate
 from mflux.utils.generated_image import GeneratedImage
+from mflux.utils.image_util import ImageUtil
 
 from mlx_imagine.registry import ADAPTER_COMMANDS, COMMANDS
 
@@ -23,6 +24,9 @@ PINNED = {
     # adapters/flux3.py copies the statements of this main(). See NOTICE.
     "flux2_generate.main": (flux2_generate.main, "98b33e79c5f6572d"),
     "flux3_generate.main": (flux3_generate.main, "7d123c7e6603e472"),
+    # engine.save_image calls these two private functions to write EXIF and the metadata dictionary.
+    "ImageUtil._embed_metadata": (ImageUtil._embed_metadata, "49ba7e90356b7792"),
+    "GeneratedImage._get_metadata": (GeneratedImage._get_metadata, "511107ee1fe28b99"),
     # engine._do_generate calls these two private helpers instead of register_callbacks, whose memory saver
     # frees the text encoder of a model the server keeps loaded.
     "CallbackManager._apply_vae_tiling": (CallbackManager._apply_vae_tiling, "c763f7e8bd1be8d3"),

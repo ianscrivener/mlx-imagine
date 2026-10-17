@@ -25,8 +25,14 @@ data_directory: ./data
 
 image_directories:
   input: ./input
-  output: ./output
+  # output: ./output
+  output: /Volumes/Extreme2Tb/AI_images_M4/___MFlux_Inbox
   max_upload_mb: 50
+
+image_metadata:
+  iptc_enabled: true
+  exif_enabled: true
+  json_sidecar_enabled: true
 
 services:
   api_enable: true

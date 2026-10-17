@@ -1,6 +1,7 @@
 """The engine with the fake z-image-turbo command: load, generate, low-RAM, cancel, save and delete rules."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from _fake_command import FakeModel
@@ -254,3 +255,56 @@ def test_an_mflux_format_model_in_the_hf_cache_loads_by_repo_id(engine: Engine) 
     with pytest.raises(ApiError) as caught:
         engine.delete_hf_model("mflux-community/zit-q8", confirm=True)
     assert caught.value.code == "model_in_use"
+
+
+def _generate_and_open(engine: Engine, **request: Any) -> dict[str, Any]:
+    import PIL.Image
+
+    wait_for(engine.submit_load({"model": "z-image-turbo"}))
+    job = wait_for(engine.submit_generate({"prompt": "a cat", "steps": 1, "seed": [3], **request}))
+    assert job.state == "succeeded", job.error
+    with PIL.Image.open(job.result["images"][0]["path"]) as image:
+        image.load()
+        return dict(image.info)
+
+
+def test_the_metadata_settings_and_the_request_decide_what_the_png_holds(engine: Engine) -> None:
+    """Bug: exif_enabled or iptc_enabled is ignored, so a user who turned metadata off still gets the prompt in
+    the file, or a request cannot override the setting."""
+    both = _generate_and_open(engine)
+    assert both.get("exif") and "XML:com.adobe.xmp" in both
+    only_iptc = _generate_and_open(engine, exif_enabled=False)
+    assert not only_iptc.get("exif") and "XML:com.adobe.xmp" in only_iptc
+    engine.settings.iptc_enabled = False
+    only_exif = _generate_and_open(engine)
+    assert only_exif.get("exif") and "XML:com.adobe.xmp" not in only_exif
+    neither = _generate_and_open(engine, exif_enabled=False)
+    assert not neither.get("exif") and "XML:com.adobe.xmp" not in neither
+    back_on = _generate_and_open(engine, iptc_enabled=True)  # a request value wins over the setting
+    assert "XML:com.adobe.xmp" in back_on
+
+
+def test_the_json_sidecar_follows_the_setting_and_the_request(engine: Engine) -> None:
+    """Bug: json_sidecar_enabled is ignored, and a .metadata.json file still appears next to each image."""
+    import json
+
+    def sidecars(**request: Any) -> list[Path]:
+        wait_for(engine.submit_load({"model": "z-image-turbo"}))
+        job = wait_for(engine.submit_generate({"prompt": "a cat", "steps": 1, "seed": [4], **request}))
+        assert job.state == "succeeded", job.error
+        return list(Path(job.result["images"][0]["path"]).parent.glob(f"{job.id}*.json"))
+
+    assert len(sidecars()) == 1
+    assert "prompt" in json.loads(sidecars()[0].read_text())
+    assert sidecars(json_sidecar_enabled=False) == []
+    engine.settings.json_sidecar_enabled = False
+    assert sidecars() == []
+    assert len(sidecars(json_sidecar_enabled=True)) == 1
+
+
+def test_a_metadata_option_must_be_a_boolean(engine: Engine) -> None:
+    """Bug: exif_enabled: "no" counts as true, and the file keeps its metadata."""
+    wait_for(engine.submit_load({"model": "z-image-turbo"}))
+    with pytest.raises(ApiError) as caught:
+        engine.submit_generate({"prompt": "x", "exif_enabled": "no"})
+    assert caught.value.code == "option_invalid"

@@ -18,6 +18,23 @@ from .registry import CommandSpec, parse_command_line
 # Options that change which model loads, or how. They belong to the load request.
 LOAD_OPTIONS = frozenset({"model", "base_model", "quantize", "low_ram", "float32", "compute_precision"})
 
+# Generate options that the server handles itself. They are not mflux options. A request value replaces the
+# image_metadata setting for that request.
+SERVER_OPTIONS = {
+    "exif_enabled": {
+        "type": "boolean",
+        "description": "Embed the generation data in the EXIF UserComment of each PNG. The default is the setting.",
+    },
+    "iptc_enabled": {
+        "type": "boolean",
+        "description": "Embed the IPTC and XMP data (prompt, seed, model) in each PNG. The default is the setting.",
+    },
+    "json_sidecar_enabled": {
+        "type": "boolean",
+        "description": "Write a .metadata.json file next to each PNG. The default is the setting.",
+    },
+}
+
 # Options the server does not accept (docs/scope.md 3.6 and docs/api.md 5.2). Each one writes files the
 # client names, reads files outside the input directory, changes process-wide state, or is in stage 2.
 BLOCKED_OPTIONS = frozenset(
@@ -175,6 +192,7 @@ def schemas(spec: CommandSpec) -> dict[str, Any]:
         if default is not None and name != "seed":
             schema["default"] = default
         (load if name in LOAD_OPTIONS else generate)[name] = schema
+    generate.update({name: dict(schema) for name, schema in SERVER_OPTIONS.items()})
     if "prompt" in generate:
         required.append("prompt")
     if getattr(parser, "require_image_paths", False):

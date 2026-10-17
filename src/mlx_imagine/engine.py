@@ -18,7 +18,7 @@ from .catalog import Catalog
 from .config import Settings
 from .errors import ApiError, conflict, invalid_request, not_found, unprocessable
 from .jobs import Job, JobCancelled, JobQueue
-from .options import check_image_paths, generate_names, load_names, parse, to_argv
+from .options import SERVER_OPTIONS, check_image_paths, generate_names, load_names, parse, to_argv
 from .paths import resolve_inside, safe_name
 from .registry import CommandSpec, ModelEntry, Registry
 
@@ -415,10 +415,16 @@ class Engine:
             raise conflict("model_not_loaded", "No model is loaded. Send POST /v1/model/load first.")
         if not isinstance(request, dict):
             raise invalid_request("The generate request must be a JSON object.")
+        embed = {}
+        for name in SERVER_OPTIONS:
+            if request.get(name) is not None and not isinstance(request[name], bool):
+                raise unprocessable("option_invalid", f"The option {name!r} must be a boolean.", option=name)
+            embed[name] = request[name] if request.get(name) is not None else getattr(self.settings, name)
         request = check_image_paths(request, self.input_dir, self.resolve_input)
-        argv = to_argv(target.spec.build_parser(), request, allowed=generate_names(target.spec))
+        mflux_request = {name: value for name, value in request.items() if name not in SERVER_OPTIONS}
+        argv = to_argv(target.spec.build_parser(), mflux_request, allowed=generate_names(target.spec))
         _, warnings = self._validate(target, argv)
-        job = Job("generate", request, lambda job: self._do_generate(job, argv))
+        job = Job("generate", request, lambda job: self._do_generate(job, argv, **embed))
         job.warnings = warnings
 
         def check_target() -> None:
@@ -427,7 +433,14 @@ class Engine:
 
         return self.queue.submit(job, before_queue=check_target)
 
-    def _do_generate(self, job: Job, generate_argv: list[str]) -> dict[str, Any]:
+    def _do_generate(
+        self,
+        job: Job,
+        generate_argv: list[str],
+        exif_enabled: bool = True,
+        iptc_enabled: bool = True,
+        json_sidecar_enabled: bool = True,
+    ) -> dict[str, Any]:
         from mflux.callbacks.callback_manager import CallbackManager
         from mflux.utils.exceptions import StopImageGenerationException
 
@@ -461,7 +474,7 @@ class Engine:
                             raise JobCancelled() from None
                         raise
                     path = output_dir / f"{job.id}_{seed}.png"
-                    image.save(path=str(path), export_json_metadata=True, overwrite=True)
+                    save_image(image, path, exif_enabled, iptc_enabled, json_sidecar_enabled)
                     width, height = image.image.size
                     item = {
                         "index": index,
@@ -701,6 +714,28 @@ def _unregister(model: Any, callback: Any) -> None:
         registered = getattr(callbacks, name, [])
         if callback in registered:
             registered.remove(callback)
+
+
+def save_image(image: Any, path: Path, exif: bool, iptc: bool, json_sidecar: bool = True) -> None:
+    """Save a generated PNG with the metadata that the caller wants. mflux embeds EXIF, XMP and IPTC as one switch
+    (ImageUtil.embed_metadata_enabled), so the switch goes off for the save, and the two parts go in one by one."""
+    from mflux.utils.image_util import ImageUtil
+    from mflux.utils.metadata_builder import MetadataBuilder
+
+    metadata = image._get_metadata()
+    previous = ImageUtil.embed_metadata_enabled
+    ImageUtil.embed_metadata_enabled = False
+    try:
+        image.save(path=str(path), export_json_metadata=json_sidecar, overwrite=True)
+    finally:
+        ImageUtil.embed_metadata_enabled = previous
+    try:
+        if exif:
+            ImageUtil._embed_metadata(metadata, path)
+        if iptc:
+            MetadataBuilder.embed_metadata(metadata, path)
+    except Exception:  # noqa: BLE001 -- the image is saved; a metadata failure is a log line, as in mflux
+        logger.exception("The metadata of %s was not written.", path)
 
 
 def _clear_prompt_cache(model: Any) -> None:

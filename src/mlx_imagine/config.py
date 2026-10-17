@@ -6,6 +6,7 @@ The config file is YAML (a .toml file is read as TOML) with these sections:
     mflux_models:        local_directory, remote_url, manifest_url, cron_minutes, allow_download, allow_delete, max_models, max_size_gb
     huggingface_models:  local_directory, cron_minutes, allow_hf_access, allow_model_download, require_model_confirmation, allow_delete, max_models, max_size_gb
     image_directories:   input, output, max_upload_mb
+    image_metadata:      exif_enabled, iptc_enabled, json_sidecar_enabled
     server:              host, port, require_api_token, api_token, use_tls
     queue:               queue_max_length, job_history
     (top level)          memory_limit_gb, cache_limit_gb
@@ -77,6 +78,10 @@ class Settings:
     require_api_token: bool = False
     api_token: str | None = None
     use_tls: bool = False
+    # image_metadata
+    exif_enabled: bool = True
+    iptc_enabled: bool = True
+    json_sidecar_enabled: bool = True
     # services
     api_enable: bool = True
     mcp_enable: bool = True
@@ -141,6 +146,9 @@ FIELDS: dict[tuple[str | None, str], tuple[str, tuple[type, ...]]] = {
     ("server", "require_api_token"): ("require_api_token", (bool,)),
     ("server", "api_token"): ("api_token", (str, type(None))),
     ("server", "use_tls"): ("use_tls", (bool,)),
+    ("image_metadata", "exif_enabled"): ("exif_enabled", (bool,)),
+    ("image_metadata", "iptc_enabled"): ("iptc_enabled", (bool,)),
+    ("image_metadata", "json_sidecar_enabled"): ("json_sidecar_enabled", (bool,)),
     ("services", "api_enable"): ("api_enable", (bool,)),
     ("services", "mcp_enable"): ("mcp_enable", (bool,)),
     ("services", "swagger_enable"): ("swagger_enable", (bool,)),
