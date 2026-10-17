@@ -75,6 +75,10 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
     )
     app.add_middleware(BodyLimitMiddleware, get_upload_mb=lambda: engine.settings.max_upload_mb)
 
+    from . import openai_api
+
+    openai_api.register(app, engine)
+
     # -- server ------------------------------------------------------------------------------------------------
 
     @app.get("/v1/health")

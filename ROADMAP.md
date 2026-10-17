@@ -5,7 +5,6 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
 | T-10 | 5 | Measure MLX cache limit | `mlx-cache-limit` |
-| T-15 | 6 | OpenAI-compatible adapter | `openai-api` |
 
 
 ---
@@ -25,6 +24,7 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
 | T-22 | 8 | Startup warning and proxy example | `proxy-example` |
+| T-15 | 6 | OpenAI-compatible adapter | `openai-api` |
 | T-08 | 3 | Refuse options that a model ignores | `ignored-options` |
 | T-11 | 5 | Fix upload sizes for EXIF orientation | `exif-size` |
 | T-16 | 6 | Capabilities in `GET /v1/model` | `model-capabilities` |

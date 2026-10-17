@@ -595,6 +595,22 @@ A generate request can use the `upload_id` or the `path` as `image_path`.
 
 The server keeps all images on disk. The API has no list or delete for images (scope 3.13).
 
+### 5.5 OpenAI-compatible routes
+
+Three routes follow the OpenAI images API, so a client that speaks it can use the server. They use the same token as the other routes, and they wait for the images as OpenAI does.
+
+| Route | Description |
+|---|---|
+| `GET /v1/models` | The local models that this server can run, as `{"object": "list", "data": [{"id", "object": "model", ...}]}`. |
+| `POST /v1/images/generations` | JSON: `model`, `prompt`, `n`, `size` (`1024x1024`), `response_format` (`b64_json` or `url`). |
+| `POST /v1/images/edits` | Multipart: `image`, `prompt`, `model`, `n`, `size`, `response_format`. |
+
+- `model` is a registry name, an alias or a saved model. The route loads it first when it is not the loaded model. Without `model`, the route uses the loaded model.
+- `n` is the number of images. The route picks `n` random seeds. A client can add `seed`, `steps`, `guidance` and `negative_prompt`. They are not OpenAI fields, and the rules of 5.2 apply to them.
+- `response_format` defaults to `b64_json`. A `url` points to `GET /v1/images/{job_id}/{index}`, which needs the token like every route.
+- A client that closes the request cancels the job.
+- Not supported: streaming, partial images and masks.
+
 ## 6. MCP server
 
 ### 6.1 Transports

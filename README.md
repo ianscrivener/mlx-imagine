@@ -131,7 +131,7 @@ mlx-imagine needs mflux 0.23 or later. It calls command steps and some private m
 ## Design
 
 - [docs/scope.md](docs/scope.md): the proposal, the decisions and the scope of work.
-- [docs/api.md](docs/api.md): the REST API and the MCP tools.
+- [docs/api.md](docs/api.md): the REST API, the OpenAI-compatible routes (`/v1/images/generations`) and the MCP tools.
 - [docs/mflux-internals.md](docs/mflux-internals.md): each part of mflux that mlx-imagine uses, and its risk.
 
 ## License
