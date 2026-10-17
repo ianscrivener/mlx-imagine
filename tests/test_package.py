@@ -14,6 +14,7 @@ def test_the_source_tree_ships_only_mlx_imagine() -> None:
 def test_the_package_imports_next_to_mflux() -> None:
     """Bug: the package imports a module of its own under the mflux name and shadows the library."""
     import mflux
+
     import mlx_imagine
 
     assert Path(mlx_imagine.__file__).parent == SRC / "mlx_imagine"

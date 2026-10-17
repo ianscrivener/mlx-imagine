@@ -60,7 +60,7 @@ class CommandSpec:
 
 _M = "mflux.models"
 
-# Stage 1: the mflux commands that have command steps, ControlNet excluded (docs/scope.md 3.16).
+# Stage 1: the mflux commands that have command steps.
 COMMANDS: tuple[CommandSpec, ...] = (
     CommandSpec("z_image", "mflux-generate-z-image-turbo", f"{_M}.z_image.cli.z_image_turbo_generate",
                 "ZImageTurboCommand", f"{_M}.z_image.weights.z_image_weight_definition.ZImageWeightDefinition"),
@@ -85,15 +85,8 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 "QwenImageEditCommand", f"{_M}.qwen.weights.qwen_weight_definition.QwenWeightDefinition"),
 )  # fmt: skip
 
-# These have command steps too, but the server runs them only from stage 2.
-STAGE_2_COMMANDS: tuple[CommandSpec, ...] = (
-    CommandSpec("krea2", "mflux-generate-krea2-controlnet", f"{_M}.krea2.cli.krea2_controlnet_generate",
-                "Krea2ControlnetCommand", "", stage=2),
-    CommandSpec("qwen21", "mflux-generate-qwen-2.1-controlnet", f"{_M}.qwen21.cli.qwen21_controlnet_generate",
-                "Qwen21ControlnetCommand", "", stage=2),
-    CommandSpec("z_image", "mflux-generate-z-image-controlnet", f"{_M}.z_image.cli.z_image_turbo_generate_controlnet",
-                "ZImageTurboControlnetCommand", "", stage=2),
-)  # fmt: skip
+# No command is in stage 2 now. ControlNet is a non-goal (NON-GOALS.md).
+STAGE_2_COMMANDS: tuple[CommandSpec, ...] = ()
 
 REASON_NO_STEPS = "The mflux command for this model has no command steps."
 REASON_STAGE_2 = "The server supports this model from stage 2."

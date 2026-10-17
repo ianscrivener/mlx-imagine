@@ -3,7 +3,7 @@
 import pytest
 
 from mlx_imagine.errors import ApiError
-from mlx_imagine.registry import REASON_NO_STEPS, REASON_STAGE_2, Registry
+from mlx_imagine.registry import REASON_NO_STEPS, Registry
 
 
 @pytest.fixture(scope="module")
@@ -31,7 +31,7 @@ def test_models_without_steps_or_in_stage_2_are_listed_with_the_reason(registry:
     dev = registry.find("dev")
     assert not dev.supported and dev.reason == REASON_NO_STEPS
     controlnet = registry.find("z-image-turbo-controlnet-union-2.1")
-    assert not controlnet.supported and controlnet.reason == REASON_STAGE_2
+    assert not controlnet.supported and controlnet.reason == REASON_NO_STEPS
     with pytest.raises(ApiError) as caught:
         registry.supported("dev")
     assert caught.value.code == "model_not_supported"

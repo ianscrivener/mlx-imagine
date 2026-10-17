@@ -71,7 +71,7 @@ These facts come from the mflux code at version 0.23.0.
 
 The repository has 35 image commands. mlx-imagine can drive a command only if the command has a command class with `validate()`, `load()` and `generate()`. mlx-imagine calls only these steps and does not write its own (the same rule as mflux's plugin rule 3).
 
-These 13 commands have the steps. mlx-imagine can support them now. Stage 1 supports 10 of them. The 3 ControlNet commands are in stage 2 (3.16).
+These 10 commands have the steps. Stage 1 supports all of them.
 
 | Command | Class |
 |---|---|
@@ -80,36 +80,32 @@ These 13 commands have the steps. mlx-imagine can support them now. Stage 1 supp
 | `mflux-generate-ernie-image-turbo` | `ErnieImageTurboCommand` |
 | `mflux-generate-ideogram4` | `Ideogram4Command` |
 | `mflux-generate-krea2` | `Krea2Command` |
-| `mflux-generate-krea2-controlnet` | `Krea2ControlnetCommand` |
 | `mflux-generate-lens` | `LensCommand` |
 | `mflux-generate-qwen` | `QwenImageCommand` |
 | `mflux-generate-qwen-edit` | `QwenImageEditCommand` |
-| `mflux-generate-qwen-2.1-controlnet` | `Qwen21ControlnetCommand` |
 | `mflux-generate-z-image` | `ZImageCommand` |
 | `mflux-generate-z-image-turbo` | `ZImageTurboCommand` |
-| `mflux-generate-z-image-controlnet` | `ZImageTurboControlnetCommand` |
 
-The other 22 commands keep their logic in `main()`. mlx-imagine cannot support them until mflux core adds command steps for them:
+The other commands keep their logic in `main()`. mlx-imagine cannot support them until mflux core adds command steps for them:
 
-- FLUX.1: `mflux-generate` and its ControlNet, in-context, fill, depth, redux and Kontext commands.
+- FLUX.1: `mflux-generate` and its in-context, fill, depth, redux and Kontext commands.
 - FLUX.2 and FLUX 3: generate and edit.
 - Qwen 2.1: generate and edit.
 - FIBO: generate and edit, plus `mflux-refine-fibo` and `mflux-inspire-fibo`.
 - Ming.
 - `mflux-concept` and `mflux-concept-from-image`.
-- `mflux-upscale-controlnet` and `mflux-upscale-seedvr2`.
+- `mflux-upscale-seedvr2`.
 
 ### 2.2 Other facts
 
 1. **The command steps have no stability promise.** [docs/plugins.md](https://github.com/mflux-community/mflux/blob/main/docs/plugins.md) states that the steps "can change in any release".
 2. **The memory saver frees model parts.** `CallbackManager.register_callbacks` adds a memory saver. It frees the text encoder, and with `--low-ram` it also frees the transformer. After that, the server cannot use the model again. The Z-Image README tells long-running processes not to use it.
 3. **Prompt caches grow.** Qwen, Krea 2 and Ideogram 4 keep `model.prompt_cache`. Each new prompt adds one entry. A long-running process must clear these caches.
-4. **Some helpers stay in memory.** The ControlNet commands keep the depth, HED and pose detectors loaded after first use. Unloading the model does not free them.
-5. **mflux reads directory paths at import time.** `MFLUX_CACHE_DIR` in [defaults.py](https://github.com/mflux-community/mflux/blob/main/src/mflux/cli/defaults/defaults.py) and `HF_HUB_CACHE` in `huggingface_hub` are module constants. A setting change at runtime has no effect on code that already imported them.
-6. **Saved models do not record their model family.** `ModelSaver` writes `quantization_level` and `mflux_version` only. It does not write the model name or the base model.
-7. **mflux has no memory limit setting.** The code calls `mx.set_cache_limit()` for `--low-ram`. No code calls `mx.set_memory_limit()`. mlx-imagine can call both functions directly.
-8. **The CLI already describes its own options.** `mflux-capabilities` reads each command's `build_parser()`. It can give the request schema for each command.
-9. **The model registry exists.** `AVAILABLE_MODELS` and `MODEL_CLASSES` in [save.py](https://github.com/mflux-community/mflux/blob/main/src/mflux/models/common/cli/save.py) map each model name to its class and its Hugging Face repository.
+4. **mflux reads directory paths at import time.** `MFLUX_CACHE_DIR` in [defaults.py](https://github.com/mflux-community/mflux/blob/main/src/mflux/cli/defaults/defaults.py) and `HF_HUB_CACHE` in `huggingface_hub` are module constants. A setting change at runtime has no effect on code that already imported them.
+5. **Saved models do not record their model family.** `ModelSaver` writes `quantization_level` and `mflux_version` only. It does not write the model name or the base model.
+6. **mflux has no memory limit setting.** The code calls `mx.set_cache_limit()` for `--low-ram`. No code calls `mx.set_memory_limit()`. mlx-imagine can call both functions directly.
+7. **The CLI already describes its own options.** `mflux-capabilities` reads each command's `build_parser()`. It can give the request schema for each command.
+8. **The model registry exists.** `AVAILABLE_MODELS` and `MODEL_CLASSES` in [save.py](https://github.com/mflux-community/mflux/blob/main/src/mflux/models/common/cli/save.py) map each model name to its class and its Hugging Face repository.
 10. **Callbacks are open to callers.** `model.callbacks.register()` adds a callback to a loaded model. A callback can raise `StopImageGenerationException` to stop a run, as `BatterySaver` does. The callback system has no unregister call.
 
 ## 3. Issues and technical decisions
@@ -218,7 +214,6 @@ Generation and download can take many minutes. HTTP clients and MCP clients can 
 
 - Do not call `CallbackManager.register_callbacks`, because its memory saver frees model parts (fact 2).
 - Unload must delete the model, clear the prompt caches, then call `gc.collect()` and `mx.clear_cache()`.
-- mlx-imagine cannot free the ControlNet detectors (fact 4). Recommendation: restart the worker process after a ControlNet model unloads, or mark this as a known limit.
 - Add tests that load and unload a model many times and record the memory after each cycle. A leak is the most probable failure of a long-running server.
 - Memory limits use `mx.set_memory_limit()` and `mx.set_cache_limit()`. Test them on 16 GB, 36 GB and 64 GB machines.
 - The mflux plugin guide tells plugins not to set MLX memory limits, because the limits belong to the process owner. mlx-imagine is the process owner, so it sets them.
@@ -229,7 +224,7 @@ Generation and download can take many minutes. HTTP clients and MCP clients can 
 
 ### 3.9 Settings at runtime
 
-Because of fact 5, a directory change at runtime is not reliable.
+Because of fact 4, a directory change at runtime is not reliable.
 
 - Recommendation: mlx-imagine sets `MFLUX_CACHE_DIR` and `HF_HOME` from its config file before it imports mflux. A change to a directory setting needs a server restart. The API reports which settings need a restart.
 - Memory limits and output settings can change at runtime.
@@ -239,7 +234,7 @@ Because of fact 5, a directory change at runtime is not reliable.
 
 - Hugging Face list: use `huggingface_hub.scan_cache_dir()`. Show only the repositories in `AVAILABLE_MODELS`.
 - mflux list: scan the mflux model directory for `model.safetensors.index.json`.
-- Because of fact 6, the index file does not name the model family. Recommendation: when mlx-imagine saves a model, it also writes a sidecar file, `mlx-imagine.json`, with `model_name`, `base_model` and the save date.
+- Because of fact 5, the index file does not name the model family. Recommendation: when mlx-imagine saves a model, it also writes a sidecar file, `mlx-imagine.json`, with `model_name`, `base_model` and the save date.
 - A model that `mflux-save` wrote has no sidecar file. For these models, the client must give the base model, as `--base-model` does now. The server then writes the sidecar file.
 
 ### 3.11 Delete operations
@@ -295,10 +290,13 @@ Because of fact 5, a directory change at runtime is not reliable.
 Stage 1 does not include these. They are in stage 2:
 
 - LoRA files (list, download, apply at generation).
-- The ControlNet commands in Section 2.1 (`mflux-generate-krea2-controlnet`, `mflux-generate-qwen-2.1-controlnet`, `mflux-generate-z-image-controlnet`). See the memory limit in 3.8.
 
-Out of scope:
+Out of scope (see [NON-GOALS.md](NON-GOALS.md)):
 
+- ControlNet commands.
+- A step preview on the event stream.
+- A cache of the quantized copy at first load.
+- An AUTOMATIC1111 API shim, and a separate MCP package.
 - Training.
 - Image management (3.13).
 - A web user interface.
@@ -351,7 +349,6 @@ Size: medium.
 ### Stage 2
 
 - LoRA: list, download and apply at generation. Allow the LoRA options again (3.6).
-- The 3 ControlNet commands, with a solution for the detectors that stay in memory (3.8).
 
 Size: medium.
 
@@ -375,7 +372,6 @@ Support for the 22 commands in Section 2.1 needs command steps in mflux core. Th
 | Command steps change in an mflux release | The server breaks. | Pin the mflux version. Run daily tests against mflux `main`. |
 | Version 1 does not support FLUX | Fewer users find mlx-imagine useful. | State the supported models in the README. Add families as core adds steps. |
 | Memory leaks after many load and unload cycles | The machine runs out of memory. | Load and unload tests. A memory check before each load. |
-| ControlNet detectors stay in memory | Memory use grows after a ControlNet job. | Restart the worker process, or document the limit. |
 | Real-model tests crash the developer machine | Lost work. | Run real-model tests by hand only, after you close other apps. |
 | The API is open on the network | Others can delete files or run jobs. | Bind to localhost by default. Require a token on other addresses. |
 | The LaunchAgent restarts a server that crashes at start | The server restarts again and again and uses memory. | Restart only after a crash, with `ThrottleInterval` set. Start with no model loaded. |

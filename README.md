@@ -32,7 +32,7 @@ The server runs a model only through the command steps (`validate`, `load`, `gen
 | `qwen-image` | `mflux-generate-qwen` |
 | `qwen-image-edit`, `qwen-image-edit-2511` | `mflux-generate-qwen-edit` |
 
-`GET /v1/models/supported` lists every mflux model and gives the reason when the server cannot run it. FLUX, FIBO, Ming, Qwen-Image-2.1 and the upscalers have no command steps in mflux yet. LoRA and the ControlNet commands come in stage 2.
+`GET /v1/models/supported` lists every mflux model and gives the reason when the server cannot run it. FLUX, FIBO, Ming, Qwen-Image-2.1 and the upscalers have no command steps in mflux yet. LoRA comes in stage 2.
 
 ## Install
 
