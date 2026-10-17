@@ -14,7 +14,10 @@ from .errors import ApiError
 from .jobs import ENDED, SUCCEEDED, Job
 from .options import schemas
 
-DEFAULT_GENERATE_WAIT = 300
+# MCP hosts end a tool call after a limit that differs by host and version. Claude Code failed a call at about 60
+# seconds, although the server sent progress notifications, so a tool never waits longer than MAX_WAIT.
+DEFAULT_GENERATE_WAIT = 45
+MAX_WAIT = 55
 READ_ONLY = {"read_only_hint": True, "open_world_hint": False}
 DESTRUCTIVE = {"destructive_hint": True, "open_world_hint": False}
 
@@ -54,6 +57,7 @@ def build_mcp(engine: Engine) -> Any:
 
     async def wait(job: Job, seconds: float, ctx: Context | None) -> dict[str, Any]:
         """Wait for the job up to `seconds`, with MCP progress notifications. Returns the job object."""
+        seconds = min(seconds, MAX_WAIT)
         if seconds <= 0:
             return engine.queue.describe(job)
         subscriber = job.subscribe()
@@ -78,6 +82,11 @@ def build_mcp(engine: Engine) -> Any:
 
     def job_content(described: dict[str, Any], with_images: bool) -> list[Any]:
         content: list[Any] = [json.dumps(described)]
+        if described["state"] in ("queued", "running"):
+            content.append(
+                f"The job is not done. Call get_job with job_id {described['id']!r} to read the result. "
+                f"Set wait_seconds (up to {MAX_WAIT}) to wait for it."
+            )
         if with_images and described["state"] == SUCCEEDED and described["type"] == "generate":
             content += [Image(path=item["path"]) for item in (described["result"] or {}).get("images", [])]
         return content

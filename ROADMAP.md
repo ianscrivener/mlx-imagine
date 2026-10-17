@@ -4,7 +4,6 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
-| T-03 | 1 | MCP generate tool waits too long | `mcp-timeout` |
 | T-04 | 1 | Exception text goes into responses | `error-leak` |
 | T-06 | 2 | Pure ASGI auth (event stream) | `asgi-auth` |
 | T-07 | 2 | Request size limits | `request-limits` |
@@ -16,20 +15,20 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 | T-16 | 6 | Capabilities in `GET /v1/model` | `model-capabilities` |
 | T-17 | 6 | Daily CI against mflux `main` | `ci-mflux-main` |
 | T-18 | 6 | Wire up `mflux_models.allow_download` | `mflux-allow-download` |
-| T-20 | 7 | Adapters: remaining ❌ models in MODELS.md | `adapter-remaining` |
 | T-21 | 8 | Inpainting and `preview_mask` | `inpainting` |
 | T-22 | 8 | Startup warning and proxy example | `proxy-example` |
-| T-23 | 9 | MCP setup guide | `mcp-guide` |
 
 
 ---
 ## Done
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
+| T-03 | 1 | MCP generate tool waits too long | `mcp-timeout` |
+| T-23 | 9 | MCP setup guide | `mcp-guide` |
 | T-01 | 1 | Adapter contract for models without upstream steps | `model-adapters` |
 | T-02 | 1 | Flux.3 Klein | `adapter-flux3-klein-turbo` |
 | T-05 | 2 | Adapter: Flux2 Klein 9B and Flux2 Klein 9B KV | `adapter-flux2-klein-9b` |
-
+| T-20 | 7 | Adapters: remaining ❌ models in MODELS.md | `adapter-remaining` |
 ---
 ## Details
 

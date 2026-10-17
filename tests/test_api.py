@@ -194,3 +194,21 @@ def test_swagger_enable_false_removes_the_docs_routes(engine: Engine) -> None:
     engine.settings.swagger_enable = False
     off = TestClient(create_app(engine))
     assert off.get("/docs").status_code == 404 and off.get("/openapi.json").status_code == 404
+
+
+def test_the_swagger_schema_offers_select_lists_and_body_examples(client: TestClient) -> None:
+    """Bug: the Swagger page shows a free text box for location or store, and an empty body for a POST."""
+    schema = client.get("/openapi.json").json()
+    params = {p["name"]: p for p in schema["paths"]["/v1/models/mflux"]["get"]["parameters"]}
+
+    def options(parameter: dict) -> list[str]:
+        node = parameter["schema"]
+        node = next(item for item in node.get("anyOf", [node]) if "enum" in item)
+        return node["enum"]
+
+    assert options(params["location"]) == ["local", "remote"]
+    assert options(params["format"]) == ["hf", "mflux"]
+    assert options(params["store"]) == ["hf_cache", "mflux_dir", "mflux_community", "hub"]
+    body = schema["paths"]["/v1/generate"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+    assert body["examples"][0]["prompt"]
+    assert client.get("/v1/models/mflux", params={"store": "nope"}).status_code == 400

@@ -94,7 +94,7 @@ claude mcp add --transport http mflux http://127.0.0.1:8765/mcp
 
 For a client that uses stdio, run `mlx-imagine mcp`. The command stops with an error when a server already runs, because two processes would each load a model.
 
-[docs/api.md](docs/api.md#6-mcp-server) lists the tools. Each supported model has its own generate tool, for example `generate_z_image_turbo`. A generate tool loads the model if necessary, waits for the images and returns them.
+[docs/mcp.md](docs/mcp.md) tells how to connect a client. [docs/api.md](docs/api.md#6-mcp-server) lists the tools. Each supported model has its own generate tool, for example `generate_z_image_turbo`. A generate tool loads the model if necessary, waits for the images and returns them.
 
 ## Run at login (macOS)
 

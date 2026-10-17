@@ -615,10 +615,10 @@ The delete tools have a required `confirm` argument. It must be `true`.
 
 Agents work better with one call that returns the images. The tools that make a job therefore have an optional `wait_seconds` argument.
 
-- Default: `300` for generate tools, `0` for the other tools.
+- Default: `45` for generate tools, `0` for the other tools. A tool waits at most `55` seconds, and a larger `wait_seconds` is cut to `55`. Each MCP host ends a tool call at its own limit. Claude Code failed a call at about 60 seconds.
 - The tool sends MCP progress notifications while it waits.
 - If the job ends in the wait time, the tool returns the result. A generate tool also returns each image as MCP image content.
-- If the job does not end in the wait time, the tool returns the job object. The agent then calls `get_job`.
+- If the job does not end in the wait time, the tool returns the job object. It also returns a text that tells the agent to call `get_job` with the job ID. The job continues on the server.
 
 ## 7. Command line
 
@@ -642,5 +642,5 @@ The REST API and the MCP server cannot install or uninstall the service.
 
 1. The default port `8765`.
 2. The default directories under `~/mlx-imagine/`.
-3. The `wait_seconds` default of 300 seconds for MCP generate tools.
+3. The `wait_seconds` default of 45 seconds and the maximum of 55 seconds for MCP generate tools.
 4. The blocked option list in 5.2.

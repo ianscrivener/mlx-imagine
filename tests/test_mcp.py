@@ -47,3 +47,27 @@ def test_set_config_changes_the_live_queue_like_the_rest_route(engine: Engine) -
     asyncio.run(mcp.call_tool("set_config", {"changes": {"queue": {"queue_max_length": 1, "job_history": 5}}}))
     assert engine.queue.max_length == 1
     assert engine.queue._history.maxlen == 5
+
+
+def test_a_slow_generate_returns_the_job_and_a_get_job_hint_within_the_wait_cap(engine: Engine) -> None:
+    """Bug: the generate tool waits up to 300 seconds, the host ends the call at about 60, and the agent gets an
+    error although the job runs on."""
+    from _fake_command import FakeModel
+
+    from mlx_imagine.mcp_server import DEFAULT_GENERATE_WAIT, MAX_WAIT
+
+    assert DEFAULT_GENERATE_WAIT < 60 and MAX_WAIT < 60
+    schema = _tools(engine)["generate_z_image_turbo"].input_schema
+    assert schema["properties"]["wait_seconds"]["default"] == DEFAULT_GENERATE_WAIT
+    FakeModel.hold_at = (0, 0)
+    mcp = build_mcp(engine)
+    try:
+        result = asyncio.run(
+            mcp.call_tool("generate_z_image_turbo", {"prompt": "a cat", "steps": 2, "seed": [0], "wait_seconds": 1})
+        )
+        content = result.content if hasattr(result, "content") else result[0]
+        job = json.loads(content[0].text)
+        assert job["state"] in ("queued", "running")
+        assert "get_job" in content[1].text and job["id"] in content[1].text
+    finally:
+        FakeModel.release.set()
