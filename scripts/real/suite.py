@@ -1,7 +1,7 @@
 """Real-weight checks against a running mlx-imagine. Each check prints one PASS or FAIL line.
 
 Usage: suite.py STEPS MODEL IMAGE [URL]
-  STEPS  comma-separated: load,seeds,cancel,img2img,mcp,lowram,save,unload
+  STEPS  comma-separated: load,seeds,cancel,img2img,mcp,lowram,save,unload,cycles
   MODEL  a saved model name in mflux_models.local_directory, or a registry name
   IMAGE  a PNG for the img2img step
 
@@ -193,6 +193,46 @@ def step_unload() -> None:
     report("unload", ok, f"active={used['mlx_active_gb']} cache={used['mlx_cache_gb']}")
 
 
+CYCLES = 8
+
+
+def server_rss_gb() -> float | None:
+    """The resident memory of the process that listens on the server port, or None when it cannot be read."""
+    import subprocess
+
+    port = URL.rsplit(":", 1)[-1]
+    pid = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, text=True).stdout.split()
+    if not pid:
+        return None
+    rss = subprocess.run(["ps", "-o", "rss=", "-p", pid[0]], capture_output=True, text=True).stdout.strip()
+    return round(int(rss) / 1024**2, 2) if rss.isdigit() else None
+
+
+def step_cycles() -> None:
+    """Load, generate one small image and unload, many times. A leak shows as MLX memory or process memory that
+    grows from cycle to cycle (docs/scope.md 3.8)."""
+    active, rss = [], []
+    for cycle in range(CYCLES):
+        submit("/v1/model/load", {"model": MODEL})
+        submit("/v1/generate", {"prompt": "a red fox in fresh snow, photo", "seed": [cycle], **SMALL})
+        submit("/v1/model/unload", None)
+        used = memory()
+        active.append(used["mlx_active_gb"])
+        rss.append(server_rss_gb())
+        print(
+            f"  cycle {cycle + 1}: active={used['mlx_active_gb']}GB cache={used['mlx_cache_gb']}GB rss={rss[-1]}GB",
+            flush=True,
+        )
+    known = [value for value in rss if value is not None]
+    grew = bool(known) and known[-1] - known[1 if len(known) > 1 else 0] > 1.0
+    ok = max(active) < 0.5 and not grew
+    report(
+        "load/unload cycles",
+        ok,
+        f"{CYCLES} cycles, active max={max(active)}GB, rss first={known[:1]} last={known[-1:]}",
+    )
+
+
 STEP_FUNCTIONS = {
     "load": step_load,
     "seeds": step_seeds,
@@ -202,6 +242,7 @@ STEP_FUNCTIONS = {
     "lowram": step_lowram,
     "save": step_save,
     "unload": step_unload,
+    "cycles": step_cycles,
 }
 
 for name in STEPS:

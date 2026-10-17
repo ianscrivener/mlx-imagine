@@ -601,6 +601,8 @@ class Engine:
     def submit_download(self, model: str, confirm: bool = False) -> Job:
         if not self.settings.hf_allow_access:
             raise disabled("huggingface_models.allow_hf_access is false.")
+        if self.catalog.quant_source(model) is not None:
+            return self._submit_community_download(model, confirm)
         entry = self.registry.supported(model)
         with_weights = self.settings.hf_allow_model_download
         if with_weights and self.settings.hf_require_model_confirmation and not confirm:
@@ -616,6 +618,60 @@ class Engine:
             _check_limits("huggingface_models", cached, self.settings.hf_max_models, self.settings.hf_max_size_gb)
         job = Job("download", {"model": entry.name}, lambda job: self._do_download(job, entry, with_weights))
         return self.queue.submit(job)
+
+    def _submit_community_download(self, repo_id: str, confirm: bool) -> Job:
+        """Download an mflux-format model of the community manifest into the mflux model directory."""
+        if not self.settings.mflux_allow_download:
+            raise disabled("mflux_models.allow_download is false.")
+        if not self.settings.hf_allow_model_download:
+            raise disabled("huggingface_models.allow_model_download is false. This download is all weights.")
+        info = self.catalog.quant_info(repo_id)
+        assert info is not None
+        sources = self.registry.by_repo(info["source_repo"])
+        entry = next((e for e in sources if e.supported), None)
+        if entry is None:
+            raise unprocessable(
+                "model_not_supported", f"The server cannot run the base model {info['source_repo']}.", model=repo_id
+            )
+        name = safe_name(repo_id.replace("/", "--"))
+        if (self.models_dir / name).exists():
+            raise conflict("name_in_use", f"The model directory already has {name!r}.", name=name)
+        saved = saved_models.list_models(self.models_dir)
+        _check_limits("mflux_models", saved, self.settings.mflux_max_models, self.settings.mflux_max_size_gb)
+        if self.settings.hf_require_model_confirmation and not confirm:
+            size = hf_models.estimate_repo_bytes(repo_id)
+            amount = f"{size / GB:.1f} GB of" if size else "an unknown amount of"
+            raise conflict(
+                "confirm_required",
+                f"You are about to download {amount} model data from Hugging Face. Set confirm to true to continue.",
+                model=repo_id,
+            )
+        quant = info["quant"]
+        quantize = int(quant[1:]) if quant and quant[1:].isdigit() else None
+        job = Job(
+            "download",
+            {"model": repo_id, "name": name},
+            lambda job: self._do_community_download(job, repo_id, entry, name, quantize),
+        )
+        return self.queue.submit(job)
+
+    def _do_community_download(
+        self, job: Job, repo_id: str, entry: ModelEntry, name: str, quantize: int | None
+    ) -> dict[str, Any]:
+        with self._job(job):
+            final = self.models_dir / name
+            partial = self.models_dir / f".{name}.partial"
+            shutil.rmtree(partial, ignore_errors=True)  # left by a download that failed before
+            try:
+                hf_models.download_repo(repo_id, partial, job)
+                saved_models.write_sidecar(partial, model_name=entry.name, base_model=entry.name, quantize=quantize)
+                partial.rename(final)
+            except BaseException:
+                shutil.rmtree(partial, ignore_errors=True)
+                raise
+            result = saved_models.describe(final)
+        self.rescan("mflux_dir")
+        return result
 
     def _do_download(self, job: Job, entry: ModelEntry, with_weights: bool) -> dict[str, Any]:
         with self._job(job):

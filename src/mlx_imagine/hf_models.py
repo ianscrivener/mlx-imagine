@@ -153,6 +153,29 @@ def download(registry: Registry, entry: ModelEntry, job: Job, with_weights: bool
     return {**entry_for_cache(registry, entry), "weights_skipped": not with_weights}
 
 
+def estimate_repo_bytes(repo_id: str) -> int | None:
+    """The size of all files of a repository, from the Hub. None when the Hub does not answer."""
+    from huggingface_hub import HfApi
+
+    try:
+        info = HfApi().model_info(repo_id, files_metadata=True)
+    except Exception:  # noqa: BLE001 -- no network, or the Hub refuses: the caller asks without a size
+        return None
+    return sum(file.size or 0 for file in info.siblings or [])
+
+
+def download_repo(repo_id: str, target: Path, job: Job) -> None:
+    """Download a whole repository (an mflux-format model) into `target`. The files are real files, not links into
+    the Hugging Face cache, so the folder is a saved model like any other."""
+    import shutil
+
+    from huggingface_hub import snapshot_download
+
+    job.set_progress({"phase": "downloading", "repo_id": repo_id})
+    snapshot_download(repo_id=repo_id, local_dir=target, tqdm_class=_progress_class(job))  # ty: ignore[no-matching-overload]
+    shutil.rmtree(target / ".cache", ignore_errors=True)  # the download bookkeeping of huggingface_hub
+
+
 def delete(registry: Registry, repo_id: str) -> dict[str, Any]:
     from huggingface_hub import scan_cache_dir
 

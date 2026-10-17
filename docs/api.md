@@ -235,7 +235,7 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `mflux_models.remote_url` | string | `https://huggingface.co/mflux-community` | No | The Hugging Face organization with ready-made mflux models. Not used yet. For a later download of saved mflux models. |
 | `mflux_models.manifest_url` | string | the community manifest URL | No | The JSON Lines file with the mflux-community models. |
 | `mflux_models.cron_minutes` | integer | `5` | No | The minutes between scans of the mflux model directory. `0` turns the scan off. |
-| `mflux_models.allow_download` | boolean | `true` | No | Not used yet. For a later download of saved mflux models. |
+| `mflux_models.allow_download` | boolean | `true` | No | `false` refuses the download of a community mflux model into `local_directory` (4.3). |
 | `mflux_models.allow_delete` | boolean | `true` | No | `false` refuses each delete of a saved model. |
 | `mflux_models.max_models` | integer | none | No | A save fails when the directory holds this number of models. |
 | `mflux_models.max_size_gb` | number | none | No | A save fails when the models use this size. |
@@ -442,8 +442,8 @@ The schemas do not include blocked options. The names are the `argparse` destina
 { "model": "z-image-turbo", "confirm": true }
 ```
 
-- `model` is a registry name, an alias or a Hugging Face repository ID in the registry.
-- The server downloads only the files that the model needs.
+- `model` is a registry name, an alias or a Hugging Face repository ID in the registry. The server downloads only the files that the model needs. The files go to the Hugging Face cache.
+- `model` can also be the repository ID of a quantization in the community manifest (the store `mflux_community` of 4.1), for example `mflux-community/flux2-klein-9b-kv-mflux-q4`. The server then downloads the whole repository to `mflux_models.local_directory`, in a folder named `<owner>--<name>`, and writes `mlx-imagine.json` with the base model from the manifest. The result is a saved model, so it loads by that folder name. This download needs `mflux_models.allow_download`, `huggingface_models.allow_model_download` and a base model that the server can run. The `mflux_models` limits `max_models` and `max_size_gb` apply.
 - `confirm` is needed only when `huggingface_models.require_model_confirmation` is `true`.
 - The job `result` is the model entry from the list.
 

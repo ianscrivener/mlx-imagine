@@ -252,6 +252,13 @@ class Catalog:
             )  # fmt: skip
         return rows
 
+    def quant_info(self, repo_id: str) -> sqlite3.Row | None:
+        """The manifest row of a quantization repository, or None."""
+        with self._lock, self._db() as connection:
+            return connection.execute(
+                "SELECT * FROM manifest WHERE kind = 'quant' AND lower(repo_id) = ?", (repo_id.lower(),)
+            ).fetchone()
+
     def quant_source(self, repo_id: str) -> str | None:
         """The source repository that the manifest gives for a quantization repository, or None."""
         with self._lock, self._db() as connection:

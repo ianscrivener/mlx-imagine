@@ -10,8 +10,6 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 ## Defer
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
-| T-17 | 6 | Daily CI against mflux `main` | `ci-mflux-main` |
-| T-18 | 6 | Wire up `mflux_models.allow_download` | `mflux-allow-download` |
 | T-21 | 8 | Inpainting and `preview_mask` | `inpainting` |
 | T-12 | 6 | LoRA: list, download, apply | `lora` |
 | T-25 | 7 | Per-request input and output subfolders (inside the configured folders) | `io-subdirs` |
@@ -25,6 +23,8 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 | T-22 | 8 | Startup warning and proxy example | `proxy-example` |
 | T-15 | 6 | OpenAI-compatible adapter | `openai-api` |
 | T-10 | 5 | Measure MLX cache limit | `mlx-cache-limit` |
+| T-17 | 6 | Daily CI against mflux `main` | `ci-mflux-main` |
+| T-18 | 6 | Wire up `mflux_models.allow_download` | `mflux-allow-download` |
 | T-08 | 3 | Refuse options that a model ignores | `ignored-options` |
 | T-11 | 5 | Fix upload sizes for EXIF orientation | `exif-size` |
 | T-16 | 6 | Capabilities in `GET /v1/model` | `model-capabilities` |
@@ -46,7 +46,7 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 - Needs a change to the "command steps only" rule in AGENTS.md. Ask the maintainer first.
 
 ### `ci-mflux-main`
-- Also: slow tests for load/unload cycles and memory leaks. Run by hand only.
+- The daily job `mflux-main` is in `.github/workflows/tests.yml`. The load/unload leak test is the real-weight step `cycles` (by hand only).
 
 ### `adapter-remaining`
 - Qwen-Image 2.1 and Turbo, Fibo (3), Ming-Image.

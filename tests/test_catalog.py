@@ -129,3 +129,63 @@ def test_the_list_route_filters_and_the_old_routes_are_gone(engine: Engine, cata
     assert client.get("/v1/models/mflux", params={"store": "nope"}).status_code == 400
     for old in ("/v1/models/saved", "/v1/models/huggingface", "/v1/models/supported"):
         assert client.get(old).status_code == 404
+
+
+def _fake_download(monkeypatch) -> None:
+    def download_repo(repo_id: str, target: Path, job) -> None:
+        (target / "transformer").mkdir(parents=True)
+        (target / "transformer" / saved_models.INDEX).write_text('{"metadata": {"quantization_level": "8"}}')
+
+    monkeypatch.setattr("mlx_imagine.hf_models.download_repo", download_repo)
+
+
+def test_a_community_model_downloads_into_the_mflux_directory_as_a_saved_model(
+    engine: Engine, catalog: Catalog, monkeypatch
+) -> None:
+    """Bug: allow_download does nothing, so a model of the community manifest cannot reach the mflux directory."""
+    from conftest import wait_for
+
+    from mlx_imagine.errors import ApiError
+
+    catalog.load_manifest()
+    _fake_download(monkeypatch)
+    repo = "mflux-community/z-image-turbo-mflux-q8"
+    job = wait_for(engine.submit_download(repo))
+    assert job.state == "succeeded", job.error
+    path = engine.models_dir / "mflux-community--z-image-turbo-mflux-q8"
+    sidecar = saved_models.read_sidecar(path)
+    assert sidecar["base_model"] == "z-image-turbo" and sidecar["quantize"] == 8
+    listed = {m["name"]: m for m in catalog.list_models({"store": "mflux_dir"})["models"]}
+    assert listed[path.name]["loadable"] is True
+    with pytest.raises(ApiError) as caught:
+        engine.submit_download(repo)
+    assert caught.value.code == "name_in_use"
+    assert not list(engine.models_dir.glob(".*.partial"))
+
+
+def test_a_community_download_follows_the_download_settings(engine: Engine, catalog: Catalog, monkeypatch) -> None:
+    """Bug: a community download ignores mflux_models.allow_download, the weight switch or the confirmation."""
+    from mlx_imagine.errors import ApiError
+
+    catalog.load_manifest()
+    _fake_download(monkeypatch)
+    monkeypatch.setattr("mlx_imagine.hf_models.estimate_repo_bytes", lambda repo_id: 4_200_000_000)
+    repo = "mflux-community/z-image-turbo-mflux-q4"
+    engine.settings.mflux_allow_download = False
+    with pytest.raises(ApiError) as caught:
+        engine.submit_download(repo)
+    assert caught.value.status == 403 and "mflux_models.allow_download" in caught.value.message
+    engine.settings.mflux_allow_download = True
+    engine.settings.hf_allow_model_download = False
+    with pytest.raises(ApiError) as caught:
+        engine.submit_download(repo)
+    assert caught.value.status == 403
+    engine.settings.hf_allow_model_download = True
+    engine.settings.hf_require_model_confirmation = True
+    with pytest.raises(ApiError) as caught:
+        engine.submit_download(repo)
+    assert caught.value.code == "confirm_required" and "4.2 GB" in caught.value.message
+    engine.settings.mflux_max_models = 0
+    with pytest.raises(ApiError) as caught:
+        engine.submit_download(repo, confirm=True)
+    assert caught.value.code == "limit_reached"
