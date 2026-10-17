@@ -1,0 +1,137 @@
+"""The REST API over the fake command: auth, error bodies, the job flow, uploads and config."""
+
+import io
+import time
+from collections.abc import Iterator
+
+import PIL.Image
+import pytest
+from fastapi.testclient import TestClient
+
+from mlx_imagine.api import create_app
+from mlx_imagine.engine import Engine
+
+
+@pytest.fixture
+def client(engine: Engine) -> Iterator[TestClient]:
+    with TestClient(create_app(engine)) as test_client:
+        yield test_client
+
+
+def _wait(client: TestClient, job_id: str) -> dict:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        job = client.get(f"/v1/jobs/{job_id}").json()
+        if job["state"] in {"succeeded", "failed", "cancelled"}:
+            return job
+        time.sleep(0.02)
+    raise AssertionError(f"job {job_id} did not end")
+
+
+def test_load_generate_and_fetch_the_image(client: TestClient) -> None:
+    """Bug: a route returns the wrong status, or the image URL in the result does not serve the file."""
+    load = client.post("/v1/model/load", json={"model": "z-image-turbo"})
+    assert load.status_code == 202
+    generate = client.post("/v1/generate", json={"prompt": "a cat", "seed": [7], "steps": 1})
+    assert generate.status_code == 202
+    job = _wait(client, generate.json()["id"])
+    assert job["state"] == "succeeded", job["error"]
+    image = client.get(job["result"]["images"][0]["url"])
+    assert image.status_code == 200 and image.headers["content-type"] == "image/png"
+    assert client.get("/v1/model").json()["model_name"] == "z-image-turbo"
+
+
+def test_an_error_has_the_documented_body(client: TestClient) -> None:
+    """Bug: an ApiError reaches the client as a bare 500 without its code."""
+    response = client.post("/v1/generate", json={"prompt": "a cat"})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "model_not_loaded"
+    response = client.get("/v1/jobs/job_missing")
+    assert response.status_code == 404 and response.json()["error"]["code"] == "not_found"
+
+
+def test_the_token_is_required_on_every_route_but_health(engine: Engine) -> None:
+    """Bug: a route skips the token check, or the health check needs a token the LaunchAgent status cannot give."""
+    engine.settings.api_token = "secret"
+    engine.settings.require_api_token = True
+    with TestClient(create_app(engine)) as client:
+        assert client.get("/v1/health").status_code == 200
+        assert client.get("/v1/server").status_code == 401
+        assert client.get("/v1/server", headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert client.get("/v1/server", headers={"Authorization": "Bearer secret"}).status_code == 200
+        assert (
+            client.get("/v1/config", headers={"Authorization": "Bearer secret"}).json()["config"]["server"]["api_token"]
+            == "***"
+        )
+
+
+def test_an_upload_can_be_the_image_path_of_a_generate_request(client: TestClient, engine: Engine) -> None:
+    """Bug: an upload lands outside the input directory, or its ID does not resolve in a generate request."""
+    data = io.BytesIO()
+    PIL.Image.new("RGB", (64, 32)).save(data, format="PNG")
+    upload = client.post("/v1/uploads", files={"file": ("x.png", data.getvalue(), "image/png")})
+    assert upload.status_code == 201, upload.text
+    body = upload.json()
+    assert body["path"].startswith(str(engine.input_dir)) and (body["width"], body["height"]) == (64, 32)
+    client.post("/v1/model/load", json={"model": "z-image-turbo"})
+    job = client.post("/v1/generate", json={"prompt": "a cat", "image_path": body["upload_id"], "steps": 1}).json()
+    assert _wait(client, job["id"])["state"] == "succeeded"
+    not_an_image = client.post("/v1/uploads", files={"file": ("x.png", b"not a png", "image/png")})
+    assert not_an_image.status_code == 400
+
+
+def test_a_config_change_reports_which_settings_need_a_restart(client: TestClient, tmp_path) -> None:
+    """Bug: a change to the hub directory claims to apply at once, though huggingface_hub read the old value at
+    import."""
+    changes = {"queue": {"queue_max_length": 5}, "huggingface_models": {"dir": str(tmp_path / "hub")}}
+    response = client.patch("/v1/config", json=changes)
+    assert response.status_code == 200, response.text
+    assert response.json()["applied"] == ["queue.queue_max_length"]
+    assert response.json()["restart_required"] == ["huggingface_models.dir"]
+    assert client.get("/v1/server").json()["restart_required"] is True
+    assert client.patch("/v1/config", json={"server": {"port": "x"}}).status_code == 400
+    assert client.patch("/v1/config", json={"no_such": 1}).status_code == 400
+
+
+def test_the_allow_flags_and_limits_refuse_downloads_and_deletes(client: TestClient, engine: Engine) -> None:
+    """Bug: allow_delete: false in the config does not stop a delete request."""
+    engine.settings.hf_allow_delete = False
+    engine.settings.mflux_allow_delete = False
+    engine.settings.hf_allow_download = False
+    assert client.delete("/v1/models/saved/x?confirm=true").json()["error"]["code"] == "operation_disabled"
+    assert client.delete("/v1/models/huggingface/a/b?confirm=true").status_code == 403
+    response = client.post("/v1/models/huggingface/download", json={"model": "z-image-turbo"})
+    assert response.status_code == 403
+    engine.settings.mflux_max_models = 1
+    (engine.models_dir / "one" / "vae").mkdir(parents=True)
+    (engine.models_dir / "one" / "vae" / "model.safetensors.index.json").write_text("{}")
+    response = client.post("/v1/models/saved", json={"model": "z-image-turbo", "quantize": 8})
+    assert response.json()["error"]["code"] == "limit_reached"
+
+
+def test_a_quantization_outside_allowed_quantize_is_refused(client: TestClient, engine: Engine) -> None:
+    """Bug: allowed_quantize lists q8 only, but a load with q4 or without quantization still starts."""
+    engine.settings.allowed_quantize = "q8"
+    assert client.post("/v1/model/load", json={"model": "z-image-turbo", "quantize": 4}).status_code == 422
+    assert client.post("/v1/model/load", json={"model": "z-image-turbo"}).status_code == 422
+    assert client.post("/v1/model/load", json={"model": "z-image-turbo", "quantize": 8}).status_code == 202
+
+
+def test_the_supported_list_and_the_schema_route(client: TestClient) -> None:
+    """Bug: the schema route serves a model the server cannot run, or omits the generate schema."""
+    models = {model["name"]: model for model in client.get("/v1/models/supported").json()["models"]}
+    assert models["z-image-turbo"]["supported"] is True
+    assert models["dev"]["supported"] is False
+    schema = client.get("/v1/models/supported/z-image-turbo/schema").json()
+    assert schema["generate_schema"]["required"] == ["prompt"]
+    assert client.get("/v1/models/supported/dev/schema").status_code == 422
+
+
+def test_the_event_stream_ends_with_the_final_job(client: TestClient) -> None:
+    """Bug: the stream never closes after the job ends, so a client hangs."""
+    client.post("/v1/model/load", json={"model": "z-image-turbo"})
+    job = client.post("/v1/generate", json={"prompt": "a cat", "steps": 2}).json()
+    with client.stream("GET", f"/v1/jobs/{job['id']}/events") as stream:
+        text = "".join(stream.iter_text())
+    assert text.startswith("event: state")
+    assert "event: end" in text and '"state": "succeeded"' in text

@@ -1,0 +1,207 @@
+"""Requests use the names of the mflux command options (docs/scope.md 3.6, option C).
+
+A request body is a JSON object whose keys are argparse destination names (`image_path` for --image-path).
+The server turns it into a command line and runs the command's own build_parser() on it, so every check and
+default the command line has applies. The JSON Schemas come from the same parser, through mflux-capabilities'
+describe_command(), so the server never keeps its own copy of an option list."""
+
+import argparse
+import contextlib
+import io
+import warnings
+from pathlib import Path
+from typing import Any
+
+from .errors import ApiError, invalid_request, unprocessable
+from .registry import CommandSpec, parse_command_line
+
+# Options that change which model loads, or how. They belong to the load request.
+LOAD_OPTIONS = frozenset({"model", "base_model", "quantize", "low_ram", "float32", "compute_precision"})
+
+# Options the server does not accept (docs/scope.md 3.6 and docs/api.md 5.2). Each one writes files the
+# client names, reads files outside the input directory, changes process-wide state, or is in stage 2.
+BLOCKED_OPTIONS = frozenset(
+    {
+        "help",
+        "verbose",
+        "output",
+        "prompt_file",
+        "config_from_metadata",
+        "stepwise_image_output_dir",
+        "battery_percentage_stop_limit",
+        "mlx_cache_limit_gb",
+        "metadata",
+        "no_metadata",
+        "model_path",
+        "image",
+        # LoRA: stage 2. The parser resolves LoRA names when it parses, and that can download.
+        "lora",
+        "lora_paths",
+        "lora_scales",
+        "lora_style",
+        "bake_lora",
+    }
+)
+
+# Options that name an input image. Each value must resolve inside the input directory.
+IMAGE_OPTIONS = frozenset({"image_path", "image_paths"})
+
+_JSON_TYPES = {
+    "bool": {"type": "boolean"},
+    "int": {"type": "integer"},
+    "float": {"type": "number"},
+    "str": {"type": "string"},
+    "path": {"type": "string"},
+    "int-or-scale": {"anyOf": [{"type": "integer"}, {"type": "string", "pattern": "^[0-9.]+x$"}]},
+}
+
+
+class OptionError(ApiError):
+    pass
+
+
+def _actions(parser: argparse.ArgumentParser) -> dict[str, argparse.Action]:
+    return {action.dest: action for action in parser._actions if action.option_strings}
+
+
+def to_argv(
+    parser: argparse.ArgumentParser, request: dict[str, Any], allowed: frozenset[str] | None = None
+) -> list[str]:
+    """The command line for a request. Refuses unknown and blocked names before the parser runs."""
+    actions = _actions(parser)
+    argv: list[str] = []
+    for name, value in request.items():
+        if name in BLOCKED_OPTIONS:
+            raise unprocessable("option_blocked", f"The server does not accept the option {name!r}.", option=name)
+        if name not in actions:
+            raise unprocessable("option_invalid", f"Unknown option {name!r} for this model.", option=name)
+        if allowed is not None and name not in allowed:
+            code = "option_for_load" if name in LOAD_OPTIONS else "option_invalid"
+            raise unprocessable(code, f"The option {name!r} is not allowed in this request.", option=name)
+        if value is None:
+            continue
+        argv += _tokens(actions[name], name, value)
+    return argv
+
+
+def _tokens(action: argparse.Action, name: str, value: Any) -> list[str]:
+    flag = next((o for o in action.option_strings if o.startswith("--")), action.option_strings[0])
+    if isinstance(action, argparse.BooleanOptionalAction):
+        _require(isinstance(value, bool), name, "a boolean")
+        return [flag] if value else [f"--no-{flag[2:]}"]
+    if isinstance(action, (argparse._StoreTrueAction, argparse._StoreFalseAction)):
+        _require(isinstance(value, bool), name, "a boolean")
+        store_true = isinstance(action, argparse._StoreTrueAction)
+        return [flag] if value == store_true else []
+    if action.nargs in ("+", "*") or (isinstance(action.nargs, int) and action.nargs > 1):
+        items = value if isinstance(value, list) else [value]
+        _require(all(_scalar(item) for item in items), name, "a list of numbers or strings")
+        return [flag, *(str(item) for item in items)] if items or action.nargs == "*" else []
+    _require(_scalar(value), name, "a number or a string")
+    return [f"{flag}={value}"] if str(value).startswith("-") else [flag, str(value)]
+
+
+def _scalar(value: Any) -> bool:
+    return isinstance(value, (str, int, float)) and not isinstance(value, bool)
+
+
+def _require(condition: bool, name: str, kind: str) -> None:
+    if not condition:
+        raise unprocessable("option_invalid", f"The option {name!r} must be {kind}.", option=name)
+
+
+def parse(spec: CommandSpec, argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
+    """Run the command's parser. Returns the namespace and the warnings the parser gave."""
+    parser = spec.build_parser()
+    stderr = io.StringIO()
+
+    def _error(message: str) -> None:
+        raise unprocessable("option_invalid", message, command=spec.command)
+
+    setattr(parser, "error", _error)
+    with contextlib.redirect_stderr(stderr), warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            args = parse_command_line(parser, argv)
+        except SystemExit:
+            raise unprocessable("option_invalid", stderr.getvalue().strip() or "The options are not valid.") from None
+    return args, [str(warning.message) for warning in caught]
+
+
+def check_image_paths(request: dict[str, Any], input_dir: Path, resolve: Any) -> dict[str, Any]:
+    """A copy of the request with each image option resolved inside input_dir (an upload ID also works)."""
+    checked = dict(request)
+    for name in IMAGE_OPTIONS & request.keys():
+        value = request[name]
+        if value is None:
+            continue
+        if isinstance(value, list):
+            checked[name] = [str(resolve(item)) for item in value]
+        elif isinstance(value, str):
+            checked[name] = str(resolve(value))
+        else:
+            raise invalid_request(f"The option {name!r} must be a path or an upload ID.", option=name)
+    return checked
+
+
+def schemas(spec: CommandSpec) -> dict[str, Any]:
+    """The load and generate JSON Schemas of one command, from its parser."""
+    from mflux.cli.capabilities import describe_command
+
+    described = describe_command(spec.command, spec.module)
+    parser = spec.build_parser()
+    by_flag = {}
+    for action in parser._actions:
+        for option in action.option_strings:
+            by_flag[option] = action
+    load: dict[str, Any] = {}
+    generate: dict[str, Any] = {}
+    required: list[str] = []
+    for record in described.get("options", []):
+        action = by_flag[record["flag"]]
+        name = action.dest
+        if name in BLOCKED_OPTIONS or record.get("status") in {"ignored", "rejected"}:
+            continue
+        schema = dict(_JSON_TYPES.get(record["type"], {"type": "string"}))
+        if "choices" in record:
+            schema = {"enum": [_choice(choice, record["type"]) for choice in record["choices"]]}
+        if record.get("nargs") in {"+", "*"}:
+            schema = {"type": "array", "items": schema}
+        if record.get("help"):
+            schema["description"] = record["help"].replace("%%", "%")
+        default = record.get("parser_default")
+        if default is not None and name != "seed":
+            schema["default"] = default
+        (load if name in LOAD_OPTIONS else generate)[name] = schema
+    if "prompt" in generate:
+        required.append("prompt")
+    if getattr(parser, "require_image_paths", False):
+        required.append("image_paths")
+    if "seed" in generate:
+        generate["seed"]["description"] = "One image for each seed. Default: one random seed."
+    return {
+        "load_schema": {"type": "object", "properties": load, "additionalProperties": False},
+        "generate_schema": {
+            "type": "object",
+            "properties": generate,
+            "required": required,
+            "additionalProperties": False,
+        },
+    }
+
+
+def _choice(choice: str, type_name: str) -> Any:
+    if type_name == "int":
+        with contextlib.suppress(ValueError):
+            return int(choice)
+    return choice
+
+
+def generate_names(spec: CommandSpec) -> frozenset[str]:
+    parser = spec.build_parser()
+    return frozenset(name for name in _actions(parser) if name not in LOAD_OPTIONS and name not in BLOCKED_OPTIONS)
+
+
+def load_names(spec: CommandSpec) -> frozenset[str]:
+    parser = spec.build_parser()
+    return frozenset(name for name in _actions(parser) if name in LOAD_OPTIONS)

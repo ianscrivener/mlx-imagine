@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+dist/
+.pytest_cache/
+.ruff_cache/
+input/
+output/
+z_*
+
+.DS_Store
+Thumbs.db.real-logs/

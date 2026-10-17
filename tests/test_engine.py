@@ -1,0 +1,182 @@
+"""The engine with the fake z-image-turbo command: load, generate, low-RAM, cancel, save and delete rules."""
+
+from pathlib import Path
+
+import pytest
+from _fake_command import FakeModel
+from conftest import wait_for
+
+from mlx_imagine import saved_models
+from mlx_imagine.engine import Engine
+from mlx_imagine.errors import ApiError
+
+
+def _load(engine: Engine, **request) -> None:
+    job = wait_for(engine.submit_load({"model": "z-image-turbo", **request}))
+    assert job.state == "succeeded", job.error
+
+
+def test_load_then_generate_saves_one_image_per_seed(engine: Engine) -> None:
+    """Bug: the model loads again for each image, or a seed's image is not saved in the output directory."""
+    _load(engine)
+    job = wait_for(engine.submit_generate({"prompt": "a cat", "seed": [1, 2], "steps": 3}))
+    assert job.state == "succeeded", job.error
+    assert len(FakeModel.instances) == 1
+    images = job.result["images"]
+    assert [image["seed"] for image in images] == [1, 2]
+    for image in images:
+        path = Path(image["path"])
+        assert path.parent == engine.output_dir and path.is_file()
+        assert path.with_suffix(".json").is_file()
+    assert job.progress == {"image_index": 1, "image_count": 2, "step": 3, "total_steps": 3}
+
+
+def test_generate_is_checked_against_the_target_model_before_it_waits(engine: Engine) -> None:
+    """Bug: a generate request with no model, or with a bad option, waits in the queue and fails minutes later."""
+    with pytest.raises(ApiError) as caught:
+        engine.submit_generate({"prompt": "a cat"})
+    assert caught.value.code == "model_not_loaded"
+    engine.submit_load({"model": "z-image-turbo"})  # still waiting: the target model is enough
+    with pytest.raises(ApiError) as caught:
+        engine.submit_generate({"prompt": "a cat", "steps": "many"})
+    assert caught.value.code == "option_invalid"
+    assert engine.submit_generate({"prompt": "a cat", "steps": 1}).state in {"queued", "running", "succeeded"}
+
+
+def test_a_load_request_for_a_model_the_command_refuses_fails_at_once(engine: Engine) -> None:
+    """Bug: the server accepts a model its command cannot run, and the load fails inside mflux."""
+    with pytest.raises(ApiError) as caught:
+        engine.submit_load({"model": "dev"})
+    assert caught.value.code == "model_not_supported"
+
+
+def test_the_prompt_is_used_as_given_and_never_read_from_stdin(engine: Engine) -> None:
+    """Bug: the server calls PromptUtil.read_prompt, so the prompt "-" reads stdin, which is the MCP stdio channel."""
+    _load(engine)
+    job = wait_for(engine.submit_generate({"prompt": "-", "steps": 1}))
+    assert job.state == "succeeded", job.error
+    assert FakeModel.instances[0].generate_calls[-1]["prompt"] == "-"
+
+
+def test_low_ram_mode_loads_the_model_again_before_the_next_job(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bug: after a low-RAM run freed the transformer, the next job uses the broken model."""
+    from mflux.callbacks.callback_manager import CallbackManager
+
+    registered = []
+
+    def fake_memory_saver(args, model):
+        saver = type("Saver", (), {"call_in_loop": lambda self, **kwargs: None})()
+        model.callbacks.register(saver)
+        registered.append(saver)
+        return saver
+
+    monkeypatch.setattr(CallbackManager, "_register_memory_saver", staticmethod(fake_memory_saver))
+    _load(engine, low_ram=True)
+    for _ in range(2):
+        assert wait_for(engine.submit_generate({"prompt": "a cat", "steps": 1})).state == "succeeded"
+    assert len(FakeModel.instances) == 2  # one load, one reload before the second job
+    assert engine.loaded.state == "needs_reload"
+    assert registered[0] not in FakeModel.instances[0].callbacks.in_loop
+
+
+def test_a_cancel_during_a_run_stops_it_and_keeps_the_images_that_are_complete(engine: Engine) -> None:
+    """Bug: a cancel waits for all seeds, or it drops the images that were already saved."""
+    _load(engine)
+    FakeModel.hold_at = (2, 1)
+    job = engine.submit_generate({"prompt": "a cat", "seed": [1, 2, 3], "steps": 2})
+    assert FakeModel.held.wait(5)  # the first image is complete, the second waits at step 1
+    engine.queue.cancel(job.id)
+    FakeModel.release.set()
+    wait_for(job)
+    assert job.state == "cancelled"
+    assert [image["seed"] for image in job.result["images"]] == [1]
+
+
+def test_unload_frees_the_model_and_clears_the_prompt_cache(engine: Engine) -> None:
+    """Bug: unload keeps a reference to the model or its prompt cache, so the memory is never freed."""
+    _load(engine)
+    wait_for(engine.submit_generate({"prompt": "a cat", "steps": 1}))
+    model = FakeModel.instances[0]
+    assert model.prompt_cache
+    assert wait_for(engine.submit_unload()).state == "succeeded"
+    assert engine.loaded is None and engine.target is None
+    assert model.prompt_cache == {}
+
+
+def test_a_failed_load_resets_the_target_to_the_model_that_is_loaded(engine: Engine, monkeypatch) -> None:
+    """Bug: after a failed load, generate requests are checked against a model that never loaded."""
+    from _fake_command import FakeCommand
+
+    def broken(args):
+        raise RuntimeError("weights missing")
+
+    monkeypatch.setattr(FakeCommand, "load", staticmethod(broken))
+    job = wait_for(engine.submit_load({"model": "z-image-turbo"}))
+    assert job.state == "failed"
+    assert engine.target is None
+
+
+def test_a_saved_model_loads_by_name_with_its_sidecar(engine: Engine) -> None:
+    """Bug: a saved model loads without --base-model, so mflux cannot tell its architecture."""
+    path = engine.models_dir / "zit-q8"
+    (path / "transformer").mkdir(parents=True)
+    (path / "transformer" / saved_models.INDEX).write_text('{"metadata": {"quantization_level": "8"}}')
+    with pytest.raises(ApiError) as caught:
+        engine.submit_load({"model": "zit-q8"})
+    assert caught.value.code == "base_model_required"
+    first = wait_for(engine.submit_load({"model": "zit-q8", "base_model": "z-image-turbo"}))
+    assert first.state == "succeeded", first.error
+    assert saved_models.read_sidecar(path)["base_model"] == "z-image-turbo"  # the load wrote the sidecar
+    _load_job = wait_for(engine.submit_load({"model": "zit-q8"}))
+    assert _load_job.state == "succeeded", _load_job.error
+    assert FakeModel.instances[-1].args.model_path == str(path)
+    with pytest.raises(ApiError) as caught:
+        engine.delete_saved_model("zit-q8", confirm=True)
+    assert caught.value.code == "model_in_use"
+
+
+def test_deletes_need_confirm(engine: Engine) -> None:
+    """Bug: a delete without confirm removes a model of many gigabytes."""
+    with pytest.raises(ApiError) as caught:
+        engine.delete_saved_model("anything", confirm=False)
+    assert caught.value.code == "confirm_required"
+    with pytest.raises(ApiError) as caught:
+        engine.delete_hf_model("Tongyi-MAI/Z-Image-Turbo", confirm=False)
+    assert caught.value.code == "confirm_required"
+
+
+@pytest.mark.parametrize("name", ["../escape", "a/b", ".hidden", ""])
+def test_a_save_name_must_be_one_directory_name(engine: Engine, name: str) -> None:
+    """Bug: a save name with .. or / writes the model outside the model directory."""
+    with pytest.raises(ApiError) as caught:
+        engine.submit_save({"model": "z-image-turbo", "quantize": 8, "name": name})
+    assert caught.value.code == "invalid_request"
+
+
+def test_image_paths_outside_the_input_directory_are_refused(engine: Engine) -> None:
+    """Bug: image_path reads any file on the machine."""
+    _load(engine)
+    with pytest.raises(ApiError) as caught:
+        engine.submit_generate({"prompt": "a cat", "image_path": "/etc/hosts"})
+    assert caught.value.code == "path_not_allowed"
+
+
+def test_materialize_reads_the_weights_of_a_model_or_of_its_parts() -> None:
+    """Bug: a load job ends before any weight is read, so the first generate job pays the load and an
+    out-of-memory failure happens mid-generate."""
+    import mlx.core as mx
+    import mlx.nn as nn
+
+    from mlx_imagine.engine import materialize
+
+    class Holder:  # a model class that is not an nn.Module, like LensImage
+        def __init__(self) -> None:
+            self.transformer = nn.Linear(4, 4)
+            self.name = "not a module"
+
+    for model in (nn.Linear(4, 4), Holder()):
+        mx.clear_cache()
+        materialize(model)  # must not raise on attributes that are not modules
+    materialize(object())  # a fake model with no parts
