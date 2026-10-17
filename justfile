@@ -21,13 +21,13 @@ ste_lint := ".agents/skills/asd-ste100/scripts/ste-lint.py"
 default:
     @just --list --unsorted
 
-# Run the dev checks in one go: lint, format check, type check, docs lint (no tests)
+# Run the dev checks in one go: lint, format check, type check, docs lint
 dev: dev-lint dev-format-check dev-types dev-docs
 
 # Run every check before a commit: the dev checks, then the tests
 dev-check: dev test
 
-# Lint the Markdown docs and the skills with the ASD-STE100 linter (fails on a hard violation)
+# Lint the Markdown docs and the skills with the ASD-STE100 linter 
 dev-docs:
     python3 {{ ste_lint }} README.md AGENTS.md CHANGELOG.md docs/*.md docs/development/*.md .agents/skills/imagine-*/SKILL.md .github/pull_request_template.md
 
@@ -104,7 +104,7 @@ test *args:
 test-debug *args:
     uv run pytest -x --showlocals {{ args }}
 
-# Run the mflux drift test: it fails when an mflux function the server depends on changes
+# Run the mflux drift test: fails when an mflux function the server depends on changes
 test-drift:
     uv run pytest tests/test_mflux_drift.py
 
@@ -116,7 +116,7 @@ test-file name:
 test-k expression:
     uv run pytest -k "{{ expression }}"
 
-# Real-weight checks under the memory watchdog. Steps: load,seeds,cancel,img2img,mcp,lowram,save,unload
+# Real-weight checks under the mem watchdog:load,seeds,cancel,img2img,mcp,lowram,save,unload
 [confirm("This loads real model weights and can use most of the memory of this Mac. Close heavy apps first. Continue?")]
 test-real steps=real_steps model=real_model:
     zsh scripts/real/run.sh "{{ steps }}" "{{ model }}" "{{ real_image }}" "{{ config }}"
@@ -125,12 +125,12 @@ test-real steps=real_steps model=real_model:
 test-real-log:
     cat .real-logs/suite.log
 
-# Real-weight save and quantize of z-image-turbo (loads about 20 GB of bf16 weights), then delete the save
+# Real-weight save and quantize of ZIT, then delete the save
 [confirm("This loads about 20 GB of bf16 weights and writes a 10 GB model. Close heavy apps first. Continue?")]
 test-real-save:
     zsh scripts/real/run.sh "save" "{{ real_model }}" "{{ real_image }}" "{{ config }}"
 
-# Delete .venv, caches, build output and real-test logs (keeps input/ and output/). `just venv-install` makes .venv again
+# Delete .venv, caches, build output & real-test logs (keeps input/ and output/)
 [confirm("Delete .venv, the caches, dist/ and .real-logs/? Run `just venv-install` after it. Continue?")]
 venv-delete:
     rm -rf .venv .pytest_cache .ruff_cache dist .real-logs
