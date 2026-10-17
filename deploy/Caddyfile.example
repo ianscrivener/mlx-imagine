@@ -1,0 +1,16 @@
+# Caddy reverse proxy in front of mlx-imagine. Use it to give the server a TLS address.
+# The server stays on 127.0.0.1 and keeps its own token (server.require_api_token). The proxy adds TLS.
+#
+#   caddy run --config deploy/Caddyfile.example
+#
+# Replace the host name. `tls internal` makes a certificate from the local Caddy authority.
+# For a public name, remove that line. Caddy then gets a certificate by itself.
+
+mlx-imagine.example.com {
+	tls internal
+
+	reverse_proxy 127.0.0.1:8765 {
+		# Server-Sent Events (job progress) must reach the client at once. Do not let the proxy buffer them.
+		flush_interval -1
+	}
+}

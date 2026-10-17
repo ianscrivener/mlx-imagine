@@ -79,6 +79,7 @@ def _serve(settings: config.Settings) -> None:
     from .engine import Engine
     from .mcp_server import build_mcp
 
+    _log_startup(settings)
     engine = Engine(settings)
     if settings.mcp_enable:
         mcp = build_mcp(engine)
@@ -87,6 +88,27 @@ def _serve(settings: config.Settings) -> None:
     else:
         app = create_app(engine)
     uvicorn.run(app, host=settings.host, port=settings.port, log_level="info")
+
+
+def _log_startup(settings: config.Settings) -> None:
+    import logging
+
+    log = logging.getLogger("mlx-imagine")
+    base = f"http://{settings.host}:{settings.port}"
+    services = [
+        f"{name} {base}{path}"
+        for name, enabled, path in (
+            ("REST API", settings.api_enable, "/v1"),
+            ("MCP", settings.mcp_enable, "/mcp"),
+            ("Swagger", settings.swagger_enable, "/docs"),
+        )
+        if enabled
+    ]
+    log.warning("Services: %s", "; ".join(services) or "none")
+    if not settings.token:
+        log.warning(
+            "No API token is on (server.require_api_token is false). Each program on this Mac can use the server."
+        )
 
 
 def _mcp_stdio(settings: config.Settings) -> None:

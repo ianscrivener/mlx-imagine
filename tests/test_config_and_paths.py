@@ -110,3 +110,15 @@ def test_save_changes_writes_only_the_keys_the_client_sent(tmp_path) -> None:
     assert "output: ./output" in written  # still relative
     assert "0.0.0.0" not in written and "port" not in written
     assert "future_key: 1" in written
+
+
+def test_the_startup_log_names_the_services_and_warns_when_no_token_is_on(caplog) -> None:
+    """Bug: the server starts with no token and says nothing, and the user thinks the API is protected."""
+    from mlx_imagine.cli import _log_startup
+
+    _log_startup(config.Settings(swagger_enable=False))
+    assert "REST API http://127.0.0.1:8765/v1" in caplog.text and "Swagger" not in caplog.text
+    assert "No API token" in caplog.text
+    caplog.clear()
+    _log_startup(config.Settings(require_api_token=True, api_token="x"))
+    assert "No API token" not in caplog.text

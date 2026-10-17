@@ -20,6 +20,8 @@ FastAPI makes the OpenAPI file from the code. This document is the reference for
 - On `127.0.0.1`, the token is optional. If the config sets a token, the server requires it.
 - On a different address, the server requires a token. The server does not start without one.
 - `GET /v1/health` does not require a token.
+- The server has no TLS (`server.use_tls` is not supported). To reach it over a network, bind it to `127.0.0.1`, and put a TLS proxy in front. [deploy/Caddyfile.example](../deploy/Caddyfile.example) is a Caddy example. It turns off the response buffer, which the event stream of a job needs.
+- At start, the server logs its address and each enabled service. It logs a warning when no token is on.
 
 ### 1.3 Errors
 
