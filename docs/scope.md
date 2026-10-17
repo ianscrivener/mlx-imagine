@@ -89,7 +89,7 @@ These 10 commands have the steps. Stage 1 supports all of them. FLUX 3 Image Kle
 The other commands keep their logic in `main()`. mlx-imagine cannot support them until mflux core adds command steps for them:
 
 - FLUX.1: `mflux-generate` and its in-context, fill, depth, redux and Kontext commands.
-- FLUX.2 and FLUX 3: generate and edit.
+- FLUX.2: generate and edit. FLUX 3: edit. (FLUX 3 generate runs through an adapter.)
 - Qwen 2.1: generate and edit.
 - FIBO: generate and edit, plus `mflux-refine-fibo` and `mflux-inspire-fibo`.
 - Ming.
