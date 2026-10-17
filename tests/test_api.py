@@ -7,6 +7,7 @@ from collections.abc import Iterator
 
 import PIL.Image
 import pytest
+from conftest import wait_for
 from fastapi.testclient import TestClient
 
 from mlx_imagine.api import create_app
@@ -212,3 +213,31 @@ def test_the_swagger_schema_offers_select_lists_and_body_examples(client: TestCl
     body = schema["paths"]["/v1/generate"]["post"]["requestBody"]["content"]["application/json"]["schema"]
     assert body["examples"][0]["prompt"]
     assert client.get("/v1/models/mflux", params={"store": "nope"}).status_code == 400
+
+
+def test_a_body_over_the_limit_is_refused_before_the_app_reads_it(client: TestClient) -> None:
+    """Bug: a 100 MB JSON body is read into memory, because nothing limits the request body."""
+    big = "x" * (2 * 1024 * 1024)
+    response = client.post("/v1/generate", content=b'{"prompt": "' + big.encode() + b'"}',
+                           headers={"content-type": "application/json"})  # fmt: skip
+    assert response.status_code == 413 and response.json()["error"]["code"] == "body_too_large"
+
+    def chunks():
+        for _ in range(4):
+            yield b"x" * (512 * 1024)
+
+    streamed = client.post("/v1/generate", content=chunks(), headers={"content-type": "application/json"})
+    assert streamed.status_code == 413  # no Content-Length header: the count of the bytes stops it
+
+
+def test_a_generate_request_over_the_size_limits_is_refused_before_the_queue(
+    client: TestClient, engine: Engine
+) -> None:
+    """Bug: 1000 seeds or 8192x8192 enters the queue and uses all the memory."""
+    wait_for(engine.submit_load({"model": "z-image-turbo"}))
+    cases = [{"seed": list(range(engine.settings.max_seeds + 1))}, {"width": 8192, "height": 8192},
+             {"steps": engine.settings.max_steps + 1}]  # fmt: skip
+    for extra in cases:
+        response = client.post("/v1/generate", json={"prompt": "x", **extra})
+        assert response.status_code == 422 and response.json()["error"]["code"] == "limit_exceeded", extra
+    assert engine.queue.waiting() == []

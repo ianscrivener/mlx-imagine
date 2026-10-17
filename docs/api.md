@@ -57,6 +57,8 @@ Error codes:
 | `not_found` | 404 | The item does not exist. |
 | `model_not_loaded` | 409 | A generate job has no model to use. |
 | `model_in_use` | 409 | The model is loaded, or a job in the queue uses it. |
+| `limit_exceeded` | 422 | A generate request is above `limits.max_pixels`, `max_steps` or `max_seeds`. |
+| `body_too_large` | 413 | A JSON body is larger than 1 MB, or an upload is larger than `max_upload_mb` plus 1 MB. |
 | `confirm_required` | 409 | A delete request does not have `confirm` set to `true`. A download request does not have it either, and `require_model_confirmation` is `true`. |
 | `option_invalid` | 422 | An mflux option has a value that is not correct. |
 | `option_blocked` | 422 | The server does not accept this mflux option (scope 3.6). |
@@ -242,6 +244,9 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `huggingface_models.allow_delete` | boolean | `true` | No | `false` refuses each delete from the cache. |
 | `huggingface_models.max_models` | integer | none | No | A download of a new model fails when the cache holds this number of mflux models. |
 | `huggingface_models.max_size_gb` | number | none | No | A download of a new model fails when the mflux models in the cache use this size. |
+| `limits.max_pixels` | integer | `16777216` | No | The most pixels (width times height) of one image. A generate request above it returns `limit_exceeded`. |
+| `limits.max_steps` | integer | `200` | No | The most denoising steps of one image. |
+| `limits.max_seeds` | integer | `16` | No | The most seeds, which means images, in one generate request. |
 | `image_metadata.exif_enabled` | boolean | `true` | No | Embed the generation data in the EXIF UserComment of each generated PNG. A generate request can set `exif_enabled` for one request. |
 | `image_metadata.iptc_enabled` | boolean | `true` | No | Embed the IPTC and XMP data (prompt, seed, model) in each generated PNG. A generate request can set `iptc_enabled` for one request. |
 | `image_metadata.json_sidecar_enabled` | boolean | `true` | No | Write a `.metadata.json` file next to each generated PNG. A generate request can set `json_sidecar_enabled` for one request. |

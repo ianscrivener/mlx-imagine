@@ -8,7 +8,6 @@ import os
 import queue
 import threading
 import time
-import traceback
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -229,14 +228,15 @@ class JobQueue:
             self._finish(job, CANCELLED, error={"code": "cancelled", "message": "A client cancelled the job."})
         except ApiError as exc:
             self._finish(job, FAILED, error=exc.to_dict())
-        except Exception as exc:  # noqa: BLE001 -- one failed job must not stop the worker
+        except Exception:  # noqa: BLE001 -- one failed job must not stop the worker
+            # The text of an mflux, MLX or Pillow error can quote absolute paths. It goes to the log only.
             logger.exception("job %s failed", job.id)
             code = {"generate": "generation_failed", "download": "download_failed"}.get(job.type, "job_failed")
-            details = {"exception": type(exc).__name__, "traceback": traceback.format_exc(limit=8)}
+            message = f"The {job.type} job failed. The server log has the reason."
             self._finish(
                 job,
                 CANCELLED if job.cancelled else FAILED,
-                error={"code": code, "message": str(exc), "details": details},
+                error={"code": code, "message": message, "details": {"job_id": job.id}},
             )
         else:
             self._finish(job, SUCCEEDED, result=result)

@@ -4,9 +4,6 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
-| T-04 | 1 | Exception text goes into responses | `error-leak` |
-| T-06 | 2 | Pure ASGI auth (event stream) | `asgi-auth` |
-| T-07 | 2 | Request size limits | `request-limits` |
 | T-08 | 3 | Refuse options that a model ignores | `ignored-options` |
 | T-10 | 5 | Measure MLX cache limit | `mlx-cache-limit` |
 | T-11 | 5 | Fix upload sizes for EXIF orientation | `exif-size` |
@@ -31,6 +28,9 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 ## Done
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
+| T-04 | 1 | Exception text goes into responses | `error-leak` |
+| T-06 | 2 | Pure ASGI auth (event stream) | `asgi-auth` |
+| T-07 | 2 | Request size limits | `request-limits` |
 | T-03 | 1 | MCP generate tool waits too long | `mcp-timeout` |
 | T-23 | 9 | MCP setup guide | `mcp-guide` |
 | T-01 | 1 | Adapter contract for models without upstream steps | `model-adapters` |

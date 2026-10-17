@@ -258,6 +258,31 @@ class Engine:
         self._validate(load_spec, [])
         return load_spec
 
+    def _check_limits(self, args: Any) -> None:
+        """Refuse a request that asks for more than the server settings allow, before the job enters the queue."""
+        settings = self.settings
+        width, height = getattr(args, "width", None), getattr(args, "height", None)
+        if isinstance(width, int) and isinstance(height, int) and width * height > settings.max_pixels:
+            raise unprocessable(
+                "limit_exceeded",
+                f"{width}x{height} is more than limits.max_pixels ({settings.max_pixels}).",
+                limit="max_pixels",
+            )
+        steps = getattr(args, "steps", None)
+        if isinstance(steps, int) and steps > settings.max_steps:
+            raise unprocessable(
+                "limit_exceeded",
+                f"{steps} steps is more than limits.max_steps ({settings.max_steps}).",
+                limit="max_steps",
+            )
+        seeds = getattr(args, "seed", None) or []
+        if len(seeds) > settings.max_seeds:
+            raise unprocessable(
+                "limit_exceeded",
+                f"{len(seeds)} seeds is more than limits.max_seeds ({settings.max_seeds}).",
+                limit="max_seeds",
+            )
+
     def _check_quantize(self, quantize: Any) -> None:
         choices = self.settings.quantize_choices()
         if quantize not in choices:
@@ -423,7 +448,8 @@ class Engine:
         request = check_image_paths(request, self.input_dir, self.resolve_input)
         mflux_request = {name: value for name, value in request.items() if name not in SERVER_OPTIONS}
         argv = to_argv(target.spec.build_parser(), mflux_request, allowed=generate_names(target.spec))
-        _, warnings = self._validate(target, argv)
+        args, warnings = self._validate(target, argv)
+        self._check_limits(args)
         job = Job("generate", request, lambda job: self._do_generate(job, argv, **embed))
         job.warnings = warnings
 

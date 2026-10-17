@@ -427,8 +427,9 @@ class Catalog:
             found = list(
                 islice(HfApi().list_models(search=query, sort="downloads", limit=offset + limit + 1), offset, None)
             )
-        except Exception as error:  # noqa: BLE001 -- the Hub or the network failed
-            raise unprocessable("hub_unavailable", f"The Hub search failed: {error}") from None
+        except Exception:  # noqa: BLE001 -- the Hub or the network failed
+            logger.exception("catalog: the Hub search failed")
+            raise unprocessable("hub_unavailable", "The Hub search failed. The server log has the reason.") from None
         with self._lock, self._db() as connection:
             manifest = self._manifest_index(connection)
         items = []

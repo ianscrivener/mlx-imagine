@@ -1,5 +1,6 @@
 """The job queue: order, cancel, failure, limits."""
 
+import json
 import threading
 
 import pytest
@@ -73,7 +74,7 @@ def test_a_failed_job_does_not_stop_the_worker(queue: JobQueue) -> None:
     after = wait_for(queue.submit(Job("generate", {}, lambda job: "ok")))
     assert failed.state == "failed"
     assert failed.error["code"] == "generation_failed"
-    assert failed.error["message"] == "mlx out of memory"
+    assert "mlx out of memory" not in failed.error["message"]
     assert after.state == "succeeded"
 
 
@@ -95,3 +96,16 @@ def test_the_job_object_never_shows_server_side_context(queue: JobQueue) -> None
         "id", "type", "state", "position", "created_at", "started_at", "finished_at", "progress", "request",
         "result", "error", "warnings",
     }  # fmt: skip
+
+
+def test_a_failed_job_sends_a_fixed_message_and_keeps_the_text_in_the_log(queue: JobQueue, caplog) -> None:
+    """Bug: the exception text of mflux or MLX, with its absolute cache paths, reaches every client in job.error."""
+
+    def broken(job: Job) -> None:
+        raise RuntimeError("cannot read /Users/secret/.cache/model.safetensors")
+
+    job = wait_for(queue.submit(Job("generate", {}, broken)))
+    assert job.state == "failed"
+    assert "secret" not in json.dumps(job.error) and "Traceback" not in json.dumps(job.error)
+    assert job.error["code"] == "generation_failed"
+    assert "secret" in caplog.text

@@ -30,8 +30,8 @@ image_directories:
   max_upload_mb: 50
 
 image_metadata:
-  iptc_enabled: true
-  exif_enabled: true
+  iptc_enabled: false
+  exif_enabled: false
   json_sidecar_enabled: true
 
 services:
