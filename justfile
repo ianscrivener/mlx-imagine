@@ -21,13 +21,13 @@ ste_lint := ".agents/skills/asd-ste100/scripts/ste-lint.py"
 default:
     @just --list --unsorted
 
-# Run the dev checks in one go: lint, format check, type check, docs lint
-dev: dev-lint dev-format-check dev-types dev-docs
+# Run the dev checks in one go: lint, format check, type check, docs lint, justfile format
+dev: dev-lint dev-format-check dev-types dev-docs justfile-check
 
 # Run every check before a commit: the dev checks, then the tests
 dev-check: dev test
 
-# Lint the Markdown docs and the skills with the ASD-STE100 linter 
+# Lint the Markdown docs and the skills with the ASD-STE100 linter
 dev-docs:
     python3 {{ ste_lint }} README.md AGENTS.md CHANGELOG.md docs/*.md docs/development/*.md .agents/skills/imagine-*/SKILL.md .github/pull_request_template.md
 
