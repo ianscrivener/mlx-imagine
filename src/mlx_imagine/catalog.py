@@ -19,7 +19,7 @@ from typing import Any
 
 from . import hf_models, saved_models
 from .config import Settings
-from .errors import invalid_request, not_found, unprocessable
+from .errors import ApiError, invalid_request, not_found, unprocessable
 from .registry import Registry
 
 logger = logging.getLogger(__name__)
@@ -322,8 +322,14 @@ class Catalog:
         remote = location == "remote" or store in REMOTE_STORES
         if remote and (location == "local" or store in LOCAL_STORES):
             raise invalid_request("location and store do not match.", location=location, store=store)
-        limit = min(max(int(filters.get("limit") or (20 if remote else MAX_LIMIT)), 1), MAX_LIMIT)
-        offset = int(filters.get("cursor") or 0)
+        cursor = str(filters.get("cursor") or "0")
+        if not cursor.isdigit():
+            raise invalid_request("cursor must be a value from next_cursor.", cursor=cursor)
+        offset = int(cursor)
+        try:
+            limit = min(max(int(filters.get("limit") or (20 if remote else MAX_LIMIT)), 1), MAX_LIMIT)
+        except (TypeError, ValueError):
+            raise invalid_request("limit must be a whole number.", limit=filters.get("limit")) from None
         if remote and store == "hub":
             return self._search_hub(filters, limit, offset)
         if remote:
@@ -400,7 +406,7 @@ class Catalog:
         if not query:
             raise invalid_request("A search of the Hub needs 'q'.")
         if not self.settings.hf_allow_access:
-            raise unprocessable("operation_disabled", "huggingface_models.allow_hf_access is false.")
+            raise ApiError("operation_disabled", 403, "huggingface_models.allow_hf_access is false.")
         from itertools import islice
 
         from huggingface_hub import HfApi

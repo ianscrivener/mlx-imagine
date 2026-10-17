@@ -141,6 +141,8 @@ class Engine:
             self.apply_memory_limits()
         if "queue.queue_max_length" in applied:
             self.queue.max_length = self.settings.queue_max_length
+        if {"mflux_models.cron_minutes", "huggingface_models.cron_minutes"} & set(applied):
+            self.catalog.start()  # a start with both intervals at 0 made no thread; the thread reads the new ones
         if "queue.job_history" in applied:
             self.queue.set_history(self.settings.job_history)
         return applied, restart

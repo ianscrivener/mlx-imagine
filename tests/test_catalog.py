@@ -89,7 +89,17 @@ def test_a_hub_search_needs_a_text_and_hf_access(catalog: Catalog) -> None:
     catalog.settings.hf_allow_access = False
     with pytest.raises(ApiError) as caught:
         catalog.list_models({"store": "hub", "q": "flux"})
-    assert caught.value.code == "operation_disabled"
+    assert caught.value.code == "operation_disabled" and caught.value.status == 403
+
+
+def test_a_bad_cursor_or_limit_is_a_400_not_a_500(catalog: Catalog) -> None:
+    """Bug: cursor=abc raises ValueError, and the route answers with a bare 500."""
+    from mlx_imagine.errors import ApiError
+
+    for bad in ({"cursor": "abc"}, {"cursor": "-1"}, {"limit": "x"}):
+        with pytest.raises(ApiError) as caught:
+            catalog.list_models(bad)
+        assert caught.value.status == 400
 
 
 def test_a_location_and_a_store_that_do_not_match_are_refused(catalog: Catalog) -> None:
