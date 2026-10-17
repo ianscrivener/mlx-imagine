@@ -178,9 +178,13 @@ def test_the_swagger_page_follows_the_services_settings_and_needs_no_token(clien
     assert "HTTPBearer" in schema["components"]["securitySchemes"]
     assert client.get("/v1/server").status_code == 401
     engine.settings.api_enable = False
-    response = client.get("/v1/server", headers={"authorization": "Bearer secret"})
+    assert (
+        client.get("/v1/server", headers={"authorization": "Bearer secret"}).status_code == 200
+    )  # a restart applies it
+    off = TestClient(create_app(engine))
+    response = off.get("/v1/server", headers={"authorization": "Bearer secret"})
     assert response.status_code == 404 and response.json()["error"]["code"] == "api_disabled"
-    assert client.get("/v1/health").status_code == 200
+    assert off.get("/v1/health").status_code == 200
 
 
 def test_swagger_enable_false_removes_the_docs_routes(engine: Engine) -> None:

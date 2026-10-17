@@ -128,6 +128,8 @@ def stop(home: Path | None = None) -> str:
         if not _loaded():
             break
         time.sleep(0.1)
+    if _loaded():
+        raise ServiceError("The server did not stop in 10 seconds. Run `just mac-service status`.")
     return "stopped"
 
 

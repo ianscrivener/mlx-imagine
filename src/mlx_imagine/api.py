@@ -44,6 +44,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
             engine.stop()
 
     swagger = engine.settings.swagger_enable
+    api_enabled = engine.settings.api_enable  # read once: a change to services.* waits for a restart
     app = FastAPI(
         title="mlx-imagine",
         version=__version__,
@@ -63,7 +64,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
     @app.middleware("http")
     async def _auth(request: Request, call_next: Any) -> Any:
         path = request.url.path
-        if not engine.settings.api_enable and path.startswith("/v1/") and path not in PUBLIC_PATHS:
+        if not api_enabled and path.startswith("/v1/") and path not in PUBLIC_PATHS:
             error = ApiError("api_disabled", 404, "The REST API is off: services.api_enable is false.")
             return JSONResponse(_error_body(error), status_code=404)
         token = engine.settings.token

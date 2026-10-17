@@ -34,6 +34,10 @@ def latest_snapshot(repo: Any) -> Path | None:
     """The folder of the newest revision of a cached repository."""
     if not repo.revisions:
         return None
+    # The revision that `main` points to; without that ref, the revision with the newest files.
+    main = repo.refs.get("main") if getattr(repo, "refs", None) else None
+    if main is not None:
+        return Path(main.snapshot_path)
     return Path(max(repo.revisions, key=lambda revision: revision.last_modified).snapshot_path)
 
 
