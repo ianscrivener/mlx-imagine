@@ -38,3 +38,12 @@ def test_a_generate_call_loads_the_model_and_returns_the_image(engine: Engine) -
     job = json.loads(content[0].text)
     assert job["state"] == "succeeded", job["error"]
     assert content[1].type == "image" and content[1].mime_type == "image/png"
+
+
+def test_set_config_changes_the_live_queue_like_the_rest_route(engine: Engine) -> None:
+    """Bug: the MCP tool saves queue.queue_max_length and reports it as applied, but the running queue keeps the old
+    limit, because only the REST route updated it."""
+    mcp = build_mcp(engine)
+    asyncio.run(mcp.call_tool("set_config", {"changes": {"queue": {"queue_max_length": 1, "job_history": 5}}}))
+    assert engine.queue.max_length == 1
+    assert engine.queue._history.maxlen == 5

@@ -3,6 +3,7 @@
 # Usage: run.sh STEPS MODEL IMAGE CONFIG
 # The watchdog kills the server when free memory drops below 5% or swap grows by more than 10 GB.
 set -u
+set -o pipefail
 STEPS=$1; MODEL=$2; IMAGE=${3:a}; CONFIG=${4:a}
 HERE=${0:a:h}; ROOT=${HERE:h:h}; LOGDIR=$ROOT/.real-logs; LOG=$LOGDIR/suite.log; U=http://127.0.0.1:8765
 mkdir -p $LOGDIR; : > $LOG
@@ -15,7 +16,9 @@ zsh $HERE/watchdog.sh $SRV $LOG &
 WD=$!
 for i in {1..120}; do curl -sf $U/v1/health >/dev/null && break; sleep 1; done
 .venv/bin/python $HERE/suite.py "$STEPS" "$MODEL" "$IMAGE" $U 2>&1 | tee -a $LOG
+SUITE=$?
 kill -TERM $SRV 2>/dev/null; wait $SRV 2>/dev/null; wait $WD 2>/dev/null
 grep watchdog $LOG
 echo "memory after: $(memory_pressure | tail -1) | $(sysctl -n vm.swapusage)" | tee -a $LOG
+if (( SUITE != 0 )); then echo "suite.py stopped with exit status $SUITE" | tee -a $LOG; exit 1; fi
 grep -q "^FAIL" $LOG && exit 1 || exit 0

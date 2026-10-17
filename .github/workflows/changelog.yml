@@ -1,0 +1,52 @@
+name: Changelog
+
+# Its own workflow, because it must also run on `labeled` and `unlabeled`: the label `no-changelog` changes
+# the result without a new commit.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require a CHANGELOG.md entry under [Unreleased]
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
+        run: |
+          if [ "$SKIP" = "true" ]; then
+            echo "The label no-changelog is set. No entry is necessary."
+            exit 0
+          fi
+          git show "$BASE_SHA:CHANGELOG.md" > base-changelog.md 2>/dev/null || : > base-changelog.md
+          # Compare the [Unreleased] section, not the whole file: a line added to an old release section
+          # must not pass.
+          python3 - base-changelog.md CHANGELOG.md <<'PY'
+          import re, sys
+
+          def entries(path):
+              text = open(path, encoding="utf-8").read()
+              match = re.search(r"^## \[Unreleased\][^\n]*\n(.*?)(?=^## \[|\Z)", text, re.DOTALL | re.MULTILINE)
+              if match is None:
+                  return None
+              return {line.strip() for line in match.group(1).splitlines() if line.lstrip().startswith("- ")}
+
+          base, head = entries(sys.argv[1]) or set(), entries(sys.argv[2])
+          if head is None:
+              print("::error::CHANGELOG.md has no '## [Unreleased]' section.")
+              sys.exit(1)
+          if not head - base:
+              print("::error::Add an entry under '## [Unreleased]' in CHANGELOG.md, or add the label no-changelog for a change that users do not see.")
+              sys.exit(1)
+          print(f"CHANGELOG.md [Unreleased] has {len(head - base)} new or changed entries.")
+          PY

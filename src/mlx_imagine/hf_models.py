@@ -42,10 +42,14 @@ def is_complete(entry: ModelEntry) -> bool | None:
 def list_models(registry: Registry) -> list[dict[str, Any]]:
     repos = _cache_repos()
     models = []
-    for entry in registry.entries().values():
+    seen: set[str] = set()
+    # Several entries can share one repository (a ControlNet entry names its base repo). List the repository one
+    # time, under a supported entry when there is one, as Registry.find does.
+    for entry in sorted(registry.entries().values(), key=lambda entry: not entry.supported):
         repo = repos.get(entry.hf_repo.lower())
-        if repo is None:
+        if repo is None or repo.repo_id.lower() in seen:
             continue
+        seen.add(repo.repo_id.lower())
         models.append(
             {
                 "repo_id": repo.repo_id,
@@ -89,7 +93,7 @@ def download(registry: Registry, entry: ModelEntry, job: Job) -> dict[str, Any]:
     from huggingface_hub import snapshot_download
     from mflux.models.common.resolution.model_revisions import ModelRevisions
 
-    if entry.spec is None:
+    if not entry.supported or entry.spec is None:
         raise ApiError("model_not_supported", 422, f"{entry.name}: {entry.reason}", {"model": entry.name})
     targets = [(entry.hf_repo, entry.spec.download_patterns(entry.name))]
     targets += entry.spec.extra_downloads()

@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import Body, FastAPI, File, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
-from . import __version__, config, hf_models, saved_models
+from . import __version__, hf_models, saved_models
 from .engine import Engine
 from .errors import ApiError, invalid_request
 
@@ -73,16 +73,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
     @app.patch("/v1/config")
     def patch_config(changes: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        applied, restart = config.update(engine.settings, changes)
-        config.save(engine.settings)
-        config.make_directories(engine.settings)
-        engine.restart_required.update(restart)
-        if {"memory_limit_gb", "cache_limit_gb"} & set(applied):
-            engine.apply_memory_limits()
-        if "queue.queue_max_length" in applied:
-            engine.queue.max_length = engine.settings.queue_max_length
-        if "queue.job_history" in applied:
-            engine.queue.set_history(engine.settings.job_history)
+        applied, restart = engine.update_settings(changes)
         return {"config": engine.settings.public_dict(), "applied": applied, "restart_required": restart}
 
     # -- models ------------------------------------------------------------------------------------------------

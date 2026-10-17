@@ -15,7 +15,7 @@ config := "config.yaml"
 real_model := "z-image-turbo-q8"
 real_image := "tests/assets/puffin-512.png"
 real_steps := "load,seeds,cancel,img2img,mcp,lowram,unload"
-ste_lint := env("HOME") / ".claude/skills/asd-ste100-skill/scripts/ste-lint.py"
+ste_lint := ".agents/skills/asd-ste100/scripts/ste-lint.py"
 
 # Show all recipes
 default:
@@ -27,9 +27,9 @@ dev: dev-lint dev-format-check dev-types dev-docs
 # Run every check before a commit: the dev checks, then the tests
 dev-check: dev test
 
-# Lint the Markdown docs with the ASD-STE100 linter, when it is installed
+# Lint the Markdown docs and the skills with the ASD-STE100 linter (fails on a hard violation)
 dev-docs:
-    @if [ -f "{{ ste_lint }}" ]; then python3 "{{ ste_lint }}" README.md AGENTS.md CHANGELOG.md docs/*.md; else echo "ste-lint.py not found: {{ ste_lint }}"; fi
+    python3 {{ ste_lint }} README.md AGENTS.md CHANGELOG.md docs/*.md docs/development/*.md .agents/skills/imagine-*/SKILL.md .github/pull_request_template.md
 
 # Format with ruff and apply the safe lint fixes
 dev-fix:
@@ -47,6 +47,14 @@ dev-lint:
 # Type check with ty
 dev-types:
     uv run ty check src
+
+# Check the justfile format (CI runs this)
+justfile-check:
+    just --fmt --check
+
+# Format the justfile
+justfile-fmt:
+    just --fmt
 
 # Install mflux from a branch, e.g. just mflux-branch my-feature
 mflux-branch name:

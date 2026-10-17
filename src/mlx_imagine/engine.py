@@ -6,6 +6,7 @@ check a request against the target model (docs/api.md 2.3) and add a job, but do
 import gc
 import logging
 import os
+import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -122,6 +123,23 @@ class Engine:
 
     def stop(self) -> None:
         self.queue.stop(timeout=5)
+
+    def update_settings(self, changes: dict[str, Any]) -> tuple[list[str], list[str]]:
+        """Check, save and apply a settings change. The REST API and the MCP tool both call this, so the live
+        queue and memory limits change the same way from both. Returns (applied now, applied after restart)."""
+        from . import config
+
+        applied, restart = config.update(self.settings, changes)
+        config.save_changes(changes)
+        config.make_directories(self.settings)
+        self.restart_required.update(restart)
+        if {"memory_limit_gb", "cache_limit_gb"} & set(applied):
+            self.apply_memory_limits()
+        if "queue.queue_max_length" in applied:
+            self.queue.max_length = self.settings.queue_max_length
+        if "queue.job_history" in applied:
+            self.queue.set_history(self.settings.job_history)
+        return applied, restart
 
     def apply_memory_limits(self) -> None:
         import mlx.core as mx
@@ -456,9 +474,7 @@ class Engine:
     def submit_download(self, model: str) -> Job:
         if not self.settings.hf_allow_download:
             raise disabled("huggingface_models.allow_download is false.")
-        entry = self.registry.find(model)
-        if entry.spec is None:
-            raise unprocessable("model_not_supported", f"{entry.name}: {entry.reason}", model=entry.name)
+        entry = self.registry.supported(model)
         cached = hf_models.list_models(self.registry)
         if not any(item["model_name"] == entry.name for item in cached):
             _check_limits("huggingface_models", cached, self.settings.hf_max_models, self.settings.hf_max_size_gb)
@@ -487,7 +503,8 @@ class Engine:
             raise conflict("name_in_use", f"The model directory already has {name!r}.", name=name)
         job = Job("save", {"model": entry.name, "quantize": quantize, "name": name},
                   lambda job: self._do_save(job, entry, quantize, name))  # fmt: skip
-        return self.queue.submit(job)
+        # The save job unloads the model, so later generate requests must see no target model.
+        return self.queue.submit(job, before_queue=lambda: setattr(self, "target", None))
 
     def _do_save(self, job: Job, entry: ModelEntry, quantize: int, name: str) -> dict[str, Any]:
         with self._job(job):
@@ -495,17 +512,22 @@ class Engine:
             if final.exists():
                 raise conflict("name_in_use", f"The model directory already has {name!r}.", name=name)
             partial = self.models_dir / f".{name}.partial"
+            shutil.rmtree(partial, ignore_errors=True)  # left by a save that failed before
             self._unload(job)  # one model in memory at a time
             job.set_progress({"phase": "loading"})
-            model = build_model_for_save(entry.name, quantize)
             try:
-                job.set_progress({"phase": "saving"})
-                model.save_model(str(partial))
-            finally:
-                del model
-                free_memory()
-            saved_models.write_sidecar(partial, model_name=entry.name, base_model=entry.name, quantize=quantize)
-            partial.rename(final)
+                model = build_model_for_save(entry.name, quantize)
+                try:
+                    job.set_progress({"phase": "saving"})
+                    model.save_model(str(partial))
+                finally:
+                    del model
+                    free_memory()
+                saved_models.write_sidecar(partial, model_name=entry.name, base_model=entry.name, quantize=quantize)
+                partial.rename(final)
+            except BaseException:
+                shutil.rmtree(partial, ignore_errors=True)
+                raise
             return saved_models.describe(final)
 
     def delete_hf_model(self, repo_id: str, confirm: bool) -> dict[str, Any]:
@@ -550,8 +572,13 @@ class Engine:
 
     def resync_target(self) -> None:
         """After a job: when no load or unload job waits, the target is the model that is really loaded."""
-        if not any(job.type in {"load", "unload"} for job in self.queue.waiting()):
-            self.target = self.loaded.spec if self.loaded else None
+
+        def resync(waiting: list[Job]) -> None:
+            if not any(job.type in {"load", "unload"} for job in waiting):
+                self.target = self.loaded.spec if self.loaded else None
+
+        # Under the queue lock: submit_load and submit_unload set the target under the same lock.
+        self.queue.with_waiting(resync)
 
 
 class _CurrentJob:

@@ -179,6 +179,11 @@ class JobQueue:
         jobs = [job for job in active + ended if state is None or job.state == state]
         return [self.describe(job) for job in jobs]
 
+    def with_waiting(self, fn: Callable[[list[Job]], None]) -> None:
+        """Run fn with the waiting jobs, under the queue lock, so a check and a change are one step."""
+        with self._condition:
+            fn(list(self._waiting))
+
     def waiting(self) -> list[Job]:
         with self._condition:
             return list(self._waiting)

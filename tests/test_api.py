@@ -135,3 +135,11 @@ def test_the_event_stream_ends_with_the_final_job(client: TestClient) -> None:
         text = "".join(stream.iter_text())
     assert text.startswith("event: state")
     assert "event: end" in text and '"state": "succeeded"' in text
+
+
+@pytest.mark.parametrize("name", [123, ["a"], None])
+def test_a_save_name_that_is_not_a_string_is_a_400_not_a_500(client: TestClient, name) -> None:
+    """Bug: a numeric save name reaches safe_name's `"/" in name`, raises TypeError and returns a bare 500."""
+    response = client.post("/v1/models/saved", json={"model": "z-image-turbo", "quantize": 8, "name": name})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_request"

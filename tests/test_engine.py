@@ -180,3 +180,54 @@ def test_materialize_reads_the_weights_of_a_model_or_of_its_parts() -> None:
         mx.clear_cache()
         materialize(model)  # must not raise on attributes that are not modules
     materialize(object())  # a fake model with no parts
+
+
+def test_a_stage_2_model_download_is_refused_before_it_waits(engine: Engine, monkeypatch) -> None:
+    """Bug: a stage 2 model passes the `spec is None` check, waits in the queue, then fails with a ValueError
+    from its empty weight definition."""
+    from mlx_imagine.errors import ApiError as Error
+    from mlx_imagine.registry import REASON_STAGE_2, CommandSpec, ModelEntry
+
+    stage_2 = ModelEntry(
+        "cn", (), "owner/cn", CommandSpec("x", "cmd", "mod", "Cls", "", stage=2), reason=REASON_STAGE_2
+    )
+    monkeypatch.setitem(engine.registry.entries(), "cn", stage_2)
+    with pytest.raises(Error) as caught:
+        engine.submit_download("cn")
+    assert caught.value.code == "model_not_supported"
+
+
+def test_a_save_request_clears_the_target_model(engine: Engine) -> None:
+    """Bug: a save job unloads the model, but generate requests queued after it are checked against the old
+    target, then fail with model_not_loaded when they run."""
+    _load(engine)
+    FakeModel.hold_at = None
+    engine.queue.stop(timeout=5)  # keep the save job waiting
+    engine.submit_save({"model": "z-image-turbo", "quantize": 8, "name": "kept-waiting"})
+    with pytest.raises(ApiError) as caught:
+        engine.submit_generate({"prompt": "a cat"})
+    assert caught.value.code == "model_not_loaded"
+
+
+def test_a_failed_save_leaves_no_partial_folder(engine: Engine, monkeypatch) -> None:
+    """Bug: a save that fails leaves `.<name>.partial`, which the API cannot delete and which counts as a
+    saved model."""
+    from mlx_imagine import engine as engine_module
+
+    def broken(model_name, quantize):
+        (engine.models_dir / ".broken.partial" / "transformer").mkdir(parents=True)
+        raise RuntimeError("out of memory")
+
+    monkeypatch.setattr(engine_module, "build_model_for_save", broken)
+    job = wait_for(engine.submit_save({"model": "z-image-turbo", "quantize": 8, "name": "broken"}))
+    assert job.state == "failed"
+    assert not (engine.models_dir / ".broken.partial").exists()
+    assert saved_models.list_models(engine.models_dir) == []
+
+
+def test_image_paths_must_be_strings(engine: Engine) -> None:
+    """Bug: `"image_paths": [123]` reaches value.startswith() and returns a bare 500."""
+    _load(engine)
+    with pytest.raises(ApiError) as caught:
+        engine.submit_generate({"prompt": "a cat", "image_paths": [123]})
+    assert caught.value.code == "invalid_request"

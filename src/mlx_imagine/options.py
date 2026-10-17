@@ -136,6 +136,8 @@ def check_image_paths(request: dict[str, Any], input_dir: Path, resolve: Any) ->
         if value is None:
             continue
         if isinstance(value, list):
+            if not all(isinstance(item, str) for item in value):
+                raise invalid_request(f"The option {name!r} must be a list of paths or upload IDs.", option=name)
             checked[name] = [str(resolve(item)) for item in value]
         elif isinstance(value, str):
             checked[name] = str(resolve(value))

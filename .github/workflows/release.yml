@@ -1,0 +1,108 @@
+name: Release
+
+# Started by hand from main. The build job checks the version and the CHANGELOG section, then builds. The publish
+# job waits for approval of the `pypi` environment, publishes through PyPI Trusted Publishing, then tags the
+# release and makes the GitHub release from the CHANGELOG section.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "publish" to confirm the release'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      # $GITHUB_REF and the input go through env, so their values never become shell source.
+      - name: Validate the branch and the confirmation
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Release only from main (got $GITHUB_REF)."
+            exit 1
+          fi
+          if [ "$CONFIRM" != "publish" ]; then
+            echo "::error::Type publish to confirm the release."
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # the tag check reads all tags
+          persist-credentials: false
+
+      - name: Read the version and the CHANGELOG section
+        id: version
+        run: |
+          version=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "::error::The tag v$version exists. Change the version in pyproject.toml."
+            exit 1
+          fi
+          python3 - "$version" <<'PY'
+          import re, sys
+          version = sys.argv[1]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          match = re.search(rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|\Z)", text, re.DOTALL | re.MULTILINE)
+          if match is None or not match.group(1).strip():
+              print(f"::error::CHANGELOG.md has no section '## [{version}]' with entries.")
+              sys.exit(1)
+          open("release-notes.md", "w", encoding="utf-8").write(match.group(1).strip() + "\n")
+          PY
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: "0.11.21"
+
+      - name: Build
+        run: |
+          uv build
+          ls -l dist
+
+      - name: Keep the build and the notes
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: release
+          path: |
+            dist/
+            release-notes.md
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Deployment gate: a reviewer approves the `pypi` environment. The PyPI trusted publisher names it too.
+    environment: pypi
+    permissions:
+      contents: write  # the tag and the GitHub release
+      id-token: write  # PyPI Trusted Publishing
+    steps:
+      - name: Get the build and the notes
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: release
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+
+      - name: Tag and make the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "v$VERSION" \
+            --notes-file release-notes.md

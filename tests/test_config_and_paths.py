@@ -93,3 +93,20 @@ def test_resolve_inside_refuses_traversal_and_symlinks_out(tmp_path) -> None:
         with pytest.raises(ApiError) as caught:
             resolve_inside(base, candidate)
         assert caught.value.code == "path_not_allowed"
+
+
+def test_save_changes_writes_only_the_keys_the_client_sent(tmp_path) -> None:
+    """Bug: a settings change writes every live setting to the file, so a `serve --host 0.0.0.0` override, the
+    defaults and the absolute form of relative directories stay in the config file for each later start."""
+    path = tmp_path / "config.yaml"
+    path.write_text("image_directories:\n  output: ./output\nfuture_key: 1\n")
+    settings = config.load(path)
+    settings.host = "0.0.0.0"  # a serve --host override for this run only
+    changes = {"queue": {"queue_max_length": 5}}
+    config.update(settings, changes)
+    config.save_changes(changes, path)
+    written = path.read_text()
+    assert "queue_max_length: 5" in written
+    assert "output: ./output" in written  # still relative
+    assert "0.0.0.0" not in written and "port" not in written
+    assert "future_key: 1" in written

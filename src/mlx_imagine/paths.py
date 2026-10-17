@@ -18,8 +18,10 @@ def resolve_inside(base: Path, candidate: str | Path) -> Path:
     return path
 
 
-def safe_name(name: str) -> str:
-    """A single directory name: no separator, no '..', not empty, not hidden."""
+def safe_name(name: object) -> str:
+    """A single directory name: a string, no separator, no '..', not empty, not hidden."""
+    if not isinstance(name, str):
+        raise invalid_request("The name must be a string. Use one directory name.", name=repr(name))
     if not name or name in {".", ".."} or "/" in name or "\\" in name or name.startswith(".") or "\0" in name:
         raise invalid_request(f"{name!r} is not a valid name. Use one directory name.", name=name)
     return name

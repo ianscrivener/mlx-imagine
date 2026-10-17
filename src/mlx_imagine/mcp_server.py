@@ -97,14 +97,7 @@ def build_mcp(engine: Engine) -> Any:
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=False))
     def set_config(changes: dict[str, Any]) -> dict[str, Any]:
         """Change server settings. Directory, host, port and token changes apply after a restart."""
-        from . import config
-
-        applied, restart = call(config.update, engine.settings, changes)
-        config.save(engine.settings)
-        config.make_directories(engine.settings)
-        engine.restart_required.update(restart)
-        if {"memory_limit_gb", "cache_limit_gb"} & set(applied):
-            engine.apply_memory_limits()
+        applied, restart = call(engine.update_settings, changes)
         return {"applied": applied, "restart_required": restart}
 
     @mcp.tool(annotations=_annotations(**READ_ONLY))

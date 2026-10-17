@@ -15,3 +15,6 @@ All notable changes to mlx-imagine are listed here. The format follows
 - Saved model list, save with quantization, and delete. The server writes `mlx-imagine.json` next to each saved model.
 - A config file and a settings API.
 - `mlx-imagine service install | uninstall | status` for a macOS LaunchAgent.
+- Agent skills in `.agents/skills/` (`imagine-dev-env`, `imagine-testing`, `imagine-pr`, `imagine-release`, `imagine-api`), with symlinks in `.claude/skills/` and `.cursor/skills/`.
+- GitHub Actions: tests and lint, a daily run against mflux `main`, and a CHANGELOG check for each pull request.
+- A release workflow that publishes to PyPI through Trusted Publishing.

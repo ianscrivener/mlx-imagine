@@ -73,7 +73,10 @@ def describe(path: Path) -> dict[str, Any]:
 def list_models(model_dir: Path) -> list[dict[str, Any]]:
     if not model_dir.is_dir():
         return []
-    return [describe(path) for path in sorted(model_dir.iterdir()) if is_saved_model(path)]
+    # A name that starts with "." is a save in progress, or one that failed. It is not a saved model.
+    return [
+        describe(path) for path in sorted(model_dir.iterdir()) if not path.name.startswith(".") and is_saved_model(path)
+    ]
 
 
 def find(model_dir: Path, name: str) -> Path:

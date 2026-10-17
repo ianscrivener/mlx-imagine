@@ -13,7 +13,10 @@ while kill -0 $PID 2>/dev/null; do
   (( SW > MAXSWAP )) && MAXSWAP=$SW
   if (( FREE < ${FORCE_FREE:-5} )) || (( SW - BASE > 10240 )); then
     echo "watchdog KILL free=${FREE}% swap=${SW}M" >> $LOG
-    kill_tree $PID; sleep 3; pkill -f "mlx-imagine --config"; break
+    # Only the server this run started, and its child processes. Another mlx-imagine server on the Mac keeps running.
+    kill_tree $PID; sleep 3
+    kill -0 $PID 2>/dev/null && kill -KILL $PID
+    break
   fi
   sleep 2
 done

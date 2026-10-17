@@ -1,0 +1,125 @@
+name: Tests and Lint
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Daily: the mflux-main job finds a breaking change in mflux before it is released.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    # Needs no Apple Silicon: ruff, just --fmt and the STE linter read the files, they do not import them.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: "0.11.21"  # pinned uv: the version that writes uv.lock
+
+      # Same ruff as the pinned dev dependency in pyproject.toml. Change both together.
+      - name: Run ruff
+        run: |
+          uvx ruff@0.16.3 check .
+          uvx ruff@0.16.3 format --check .
+
+      - name: Install just
+        uses: ./.github/actions/just-setup
+
+      - name: Check the justfile format
+        run: just justfile-check
+
+      - name: Lint the docs (ASD-STE100)
+        run: just dev-docs
+
+  tests:
+    if: github.event_name != 'schedule'
+    runs-on: macos-15  # Apple Silicon: mlx has no wheel for the other runners
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: "0.11.21"
+          python-version: "3.13"
+          enable-cache: true
+
+      # --locked fails the job when uv.lock does not agree with pyproject.toml.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run tests (offline, no weights)
+        run: uv run --no-sync pytest
+
+      - name: Type check
+        run: uv run --no-sync ty check src
+
+  python-floor:
+    # requires-python is >=3.12. Development and the tests use 3.13, so this job checks the floor.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python 3.12
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: "0.11.21"
+          python-version: "3.12"
+
+      - name: Resolve again against PyPI and compile under 3.12
+        run: |
+          uv lock --upgrade --dry-run
+          uv run --no-project python -m compileall -q src
+
+  mflux-main:
+    # Runs the tests against mflux main. A failure here is a warning about the next mflux release, so it does
+    # not block a pull request. The drift test names the mflux function that changed.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: "0.11.21"
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: Install dependencies, then mflux from main
+        run: |
+          uv sync --locked
+          uv pip install --reinstall-package mflux "mflux @ git+https://github.com/mflux-community/mflux@main"
+
+      - name: Drift test against mflux main
+        run: uv run --no-sync pytest tests/test_mflux_drift.py
+
+      - name: All tests against mflux main
+        run: uv run --no-sync pytest

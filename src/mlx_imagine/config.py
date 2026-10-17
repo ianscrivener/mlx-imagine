@@ -240,6 +240,36 @@ def save(settings: Settings, path: Path | None = None) -> None:
             data.pop(section, None)
         else:
             data[section] = values
+    _write(path, data)
+
+
+def save_changes(changes: dict[str, Any], path: Path | None = None) -> None:
+    """Write only the keys in `changes`, as the client sent them, into the config file.
+
+    The live Settings also hold values that must not go into the file: the `serve --host/--port` overrides
+    of this run, the defaults, and the absolute form of relative directories. update() checks `changes`
+    before this runs."""
+    path = path or config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = copy.deepcopy(_read(path)) if path.is_file() else {}
+    for key, value in changes.items():
+        if key in SECTIONS and isinstance(value, dict):
+            target = data.setdefault(key, {})
+            for inner, inner_value in value.items():
+                _set_or_remove(target, inner, inner_value)
+        else:
+            _set_or_remove(data, key, value)
+    _write(path, data)
+
+
+def _set_or_remove(mapping: dict[str, Any], key: str, value: Any) -> None:
+    if value is None:
+        mapping.pop(key, None)
+    else:
+        mapping[key] = value
+
+
+def _write(path: Path, data: dict[str, Any]) -> None:
     text = yaml.safe_dump(data, sort_keys=False) if path.suffix in YAML_SUFFIXES else toml.dumps(data)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(text, encoding="utf-8")
