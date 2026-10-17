@@ -18,6 +18,7 @@ PUBLIC_PATHS = frozenset({"/v1/health"})
 DOCS_PATHS = frozenset({"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"})
 MB = 1024 * 1024
 JSON_BODY_LIMIT = MB
+UPLOAD_PATHS = frozenset({"/v1/uploads", "/v1/images/edits"})
 UPLOAD_OVERHEAD = MB  # the multipart boundary and the headers around the file
 
 
@@ -70,7 +71,7 @@ class BodyLimitMiddleware:
         self.get_upload_mb = get_upload_mb
 
     def limit(self, path: str) -> int:
-        return (self.get_upload_mb() * MB + UPLOAD_OVERHEAD) if path == "/v1/uploads" else JSON_BODY_LIMIT
+        return (self.get_upload_mb() * MB + UPLOAD_OVERHEAD) if path in UPLOAD_PATHS else JSON_BODY_LIMIT
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":

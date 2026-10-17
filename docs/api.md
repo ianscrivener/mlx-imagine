@@ -61,7 +61,7 @@ Error codes:
 | `model_in_use` | 409 | The model is loaded, or a job in the queue uses it. |
 | `option_ignored` | 422 | The model ignores an option of the request, for example `guidance` for a guidance-distilled model, or `negative_prompt` at guidance 1.0. |
 | `limit_exceeded` | 422 | A generate request is above `limits.max_pixels`, `max_steps` or `max_seeds`. |
-| `body_too_large` | 413 | A JSON body is larger than 1 MB, or an upload is larger than `max_upload_mb` plus 1 MB. |
+| `body_too_large` | 413 | A JSON body is larger than 1 MB, or an upload (`/v1/uploads` or `/v1/images/edits`) is larger than `max_upload_mb` plus 1 MB. |
 | `confirm_required` | 409 | A delete request does not have `confirm` set to `true`. A download request does not have it either, and `require_model_confirmation` is `true`. |
 | `option_invalid` | 422 | An mflux option has a value that is not correct. |
 | `option_blocked` | 422 | The server does not accept this mflux option (scope 3.6). |

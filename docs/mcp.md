@@ -27,7 +27,7 @@ A change to `services.mcp_enable` takes effect after a restart: `just mac-servic
 ### Claude Code
 
 ```sh
-claude mcp add --transport http mflux http://127.0.0.1:8765/mcp
+claude mcp add --transport http mlx-imagine http://127.0.0.1:8765/mcp
 ```
 
 When the server needs a token, add the header:
@@ -45,7 +45,7 @@ Use this entry in the MCP settings of the client. Give the full path of the `mlx
   "mcpServers": {
     "mlx-imagine": {
       "command": "/path/to/mlx-imagine/.venv/bin/mlx-imagine",
-      "args": ["--config", "/Users/ianscrivener/MFlux/mlx-imagine/config.yaml", "mcp"]
+      "args": ["--config", "/path/to/mlx-imagine/config.yaml", "mcp"]
     }
   }
 }
@@ -58,7 +58,7 @@ Use a stdio-to-HTTP bridge such as `mcp-remote`:
 ```json
 {
   "mcpServers": {
-    "mflux": {
+    "mlx-imagine": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "http://127.0.0.1:8765/mcp"]
     }

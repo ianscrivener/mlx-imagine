@@ -74,3 +74,18 @@ def test_edits_takes_a_multipart_image(client: TestClient) -> None:
     )
     assert response.status_code == 200, response.text
     assert len(response.json()["data"]) == 1
+
+
+def test_edits_accepts_an_upload_larger_than_the_json_limit(client: TestClient) -> None:
+    """Bug: the body limit gives /v1/images/edits the 1 MB JSON limit, so a normal photo gets 413."""
+    import os
+
+    buffer = io.BytesIO()
+    PIL.Image.frombytes("RGB", (700, 700), os.urandom(700 * 700 * 3)).save(buffer, "PNG")
+    assert len(buffer.getvalue()) > 1024 * 1024
+    response = client.post(
+        "/v1/images/edits",
+        files={"image": ("a.png", buffer.getvalue(), "image/png")},
+        data={"prompt": "a hat", "model": "z-image-turbo", "size": "64x64"},
+    )
+    assert response.status_code == 200, response.text
