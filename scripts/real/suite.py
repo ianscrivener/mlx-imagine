@@ -213,9 +213,14 @@ def step_cycles() -> None:
     grows from cycle to cycle (docs/scope.md 3.8)."""
     active, rss = [], []
     for cycle in range(CYCLES):
-        submit("/v1/model/load", {"model": MODEL})
-        submit("/v1/generate", {"prompt": "a red fox in fresh snow, photo", "seed": [cycle], **SMALL})
-        submit("/v1/model/unload", None)
+        jobs = [
+            submit("/v1/model/load", {"model": MODEL}),
+            submit("/v1/generate", {"prompt": "a red fox in fresh snow, photo", "seed": [cycle], **SMALL}),
+            submit("/v1/model/unload", None),
+        ]
+        if any(job["state"] != "succeeded" for job in jobs):
+            report("load/unload cycles", False, f"cycle {cycle + 1}: {[job['state'] for job in jobs]}")
+            return
         used = memory()
         active.append(used["mlx_active_gb"])
         rss.append(server_rss_gb())
@@ -225,11 +230,13 @@ def step_cycles() -> None:
         )
     known = [value for value in rss if value is not None]
     grew = bool(known) and known[-1] - known[1 if len(known) > 1 else 0] > 1.0
-    ok = max(active) < 0.5 and not grew
+    measured = len(known) == len(rss)
+    ok = max(active) < 0.5 and not grew and measured
     report(
         "load/unload cycles",
         ok,
-        f"{CYCLES} cycles, active max={max(active)}GB, rss first={known[:1]} last={known[-1:]}",
+        f"{CYCLES} cycles, active max={max(active)}GB, rss first={known[:1]} last={known[-1:]}"
+        + ("" if measured else " (a process memory sample is missing: inconclusive)"),
     )
 
 

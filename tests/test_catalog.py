@@ -189,3 +189,25 @@ def test_a_community_download_follows_the_download_settings(engine: Engine, cata
     with pytest.raises(ApiError) as caught:
         engine.submit_download(repo, confirm=True)
     assert caught.value.code == "limit_reached"
+
+
+def test_a_community_download_checks_the_size_limit_with_the_incoming_model(
+    engine: Engine, catalog: Catalog, monkeypatch
+) -> None:
+    """Bug: max_size_gb counts only the models on disk, so one 30 GB download passes a 1 GB limit."""
+    from conftest import wait_for
+
+    from mlx_imagine.errors import ApiError
+
+    catalog.load_manifest()
+    _fake_download(monkeypatch)
+    engine.settings.mflux_max_size_gb = 1
+    monkeypatch.setattr("mlx_imagine.hf_models.estimate_repo_bytes", lambda repo_id: 30 * 10**9)
+    with pytest.raises(ApiError) as caught:
+        engine.submit_download("mflux-community/z-image-turbo-mflux-q8")
+    assert caught.value.code == "limit_reached"
+    monkeypatch.setattr("mlx_imagine.hf_models.estimate_repo_bytes", lambda repo_id: None)  # the Hub does not answer
+    monkeypatch.setattr("mlx_imagine.saved_models._size", lambda path: 5 * 10**9)
+    job = wait_for(engine.submit_download("mflux-community/z-image-turbo-mflux-q8"))
+    assert job.state == "failed" and job.error["code"] == "limit_reached"
+    assert not list(engine.models_dir.iterdir())

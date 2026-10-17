@@ -638,8 +638,9 @@ class Engine:
             raise conflict("name_in_use", f"The model directory already has {name!r}.", name=name)
         saved = saved_models.list_models(self.models_dir)
         _check_limits("mflux_models", saved, self.settings.mflux_max_models, self.settings.mflux_max_size_gb)
+        size = hf_models.estimate_repo_bytes(repo_id)
+        self._check_incoming_size(saved, size)
         if self.settings.hf_require_model_confirmation and not confirm:
-            size = hf_models.estimate_repo_bytes(repo_id)
             amount = f"{size / GB:.1f} GB of" if size else "an unknown amount of"
             raise conflict(
                 "confirm_required",
@@ -655,6 +656,18 @@ class Engine:
         )
         return self.queue.submit(job)
 
+    def _check_incoming_size(self, saved: list[dict[str, Any]], incoming: int | None) -> None:
+        """Refuse a download that would take the mflux directory above mflux_models.max_size_gb."""
+        limit = self.settings.mflux_max_size_gb
+        if limit is None or not incoming:
+            return
+        total = sum(model["size_gb"] for model in saved) + incoming / GB
+        if total > limit:
+            raise conflict(
+                "limit_reached",
+                f"mflux_models.max_size_gb is {limit}, and this download would take the models to {total:.1f} GB.",
+            )
+
     def _do_community_download(
         self, job: Job, repo_id: str, entry: ModelEntry, name: str, quantize: int | None
     ) -> dict[str, Any]:
@@ -662,8 +675,12 @@ class Engine:
             final = self.models_dir / name
             partial = self.models_dir / f".{name}.partial"
             shutil.rmtree(partial, ignore_errors=True)  # left by a download that failed before
+            # Jobs run one at a time, so this check sees each download that ended before it.
+            saved = saved_models.list_models(self.models_dir)
+            _check_limits("mflux_models", saved, self.settings.mflux_max_models, self.settings.mflux_max_size_gb)
             try:
                 hf_models.download_repo(repo_id, partial, job)
+                self._check_incoming_size(saved, saved_models._size(partial))
                 saved_models.write_sidecar(partial, model_name=entry.name, base_model=entry.name, quantize=quantize)
                 partial.rename(final)
             except BaseException:

@@ -36,6 +36,8 @@ def swap_mb() -> int:
 
 
 loaded = finish(call("POST", "/v1/model/load", {"model": MODEL})["id"])
+if loaded["state"] != "succeeded":
+    sys.exit(f"FAIL: the load job {loaded['state']}: {loaded.get('error')}")
 print(f"load {loaded['state']} cache_limit={call('GET', '/v1/server')['memory']['mlx_cache_limit_gb']} GB", flush=True)
 times = []
 for index in range(JOBS):
@@ -43,6 +45,8 @@ for index in range(JOBS):
     started = time.monotonic()
     job = finish(call("POST", "/v1/generate", body)["id"])
     seconds = time.monotonic() - started
+    if job["state"] != "succeeded":
+        sys.exit(f"FAIL: job {index + 1} {job['state']}: {job.get('error')}")
     memory = call("GET", "/v1/server")["memory"]
     times.append(seconds)
     print(
