@@ -14,7 +14,7 @@ Use only one server. Two processes would each load a model and use the memory tw
 ## 2. Start the server
 
 1. Install the package with `just venv-install`.
-2. Edit `config.yaml`. Make sure that `services.mcp_enable` is `true`.
+2. Edit the config file. The `just` recipes use `config.yaml` in the project folder. A server that starts without `--config` reads `~/.config/mlx-imagine/config.yaml`. Make sure that `services.mcp_enable` is `true`.
 3. Start the server. Use one of these:
    - `just serve-api` runs the server in the terminal.
    - `just mac-service start` runs it as a LaunchAgent. It starts at login.
