@@ -26,7 +26,8 @@ data_directory: ./data
 image_directories:
   input: ./input
   # output: ./output
-  output: /Volumes/Extreme2Tb/AI_images_M4/___MFlux_Inbox
+  # output: /Volumes/Extreme2Tb/AI_images_M4/___MFlux_Inbox
+  output: /Volumes/Extreme2Tb/AI_images_M4/___MFlux_Inbox/Hermes_Staging
   max_upload_mb: 50
 
 image_metadata:
