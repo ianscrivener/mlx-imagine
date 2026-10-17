@@ -268,7 +268,7 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `queue.queue_max_length` | integer | `100` | No | The maximum number of jobs that wait. |
 | `queue.job_history` | integer | `200` | No | The number of ended jobs that the server keeps in memory. |
 | `memory_limit_gb` | number | none | No | Calls `mx.set_memory_limit()`. |
-| `cache_limit_gb` | number | `4` | No | Calls `mx.set_cache_limit()`. MLX keeps freed buffers in this cache for the next job. |
+| `cache_limit_gb` | number | `1` | No | Calls `mx.set_cache_limit()`. MLX keeps freed buffers in this cache for the next job. |
 
 A relative path in the config file is relative to the directory of the file. The server logs a key that it does not use, and starts. A `PATCH` request with an unknown key fails with `invalid_request`.
 

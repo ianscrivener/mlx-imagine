@@ -98,8 +98,9 @@ class Settings:
     data_dir: str = "~/mlx-imagine/data"
     memory_limit_gb: float | None = None
     # MLX keeps freed buffers in a cache for reuse. Without a limit, one 512x512 Z-Image Turbo image left 14.8 GB
-    # in it. 4 GB keeps the speed benefit for the next job and gives the rest back to the system.
-    cache_limit_gb: float | None = 4.0
+    # in it. A measurement (ROADMAP T-10, z-image-turbo-q8, 10 jobs of 512x512, a fresh process each time) gave the
+    # same 11.9 s a job at 1 GB and at 4 GB, and no slowdown at either. 1 GB gives 3 GB more back to the system.
+    cache_limit_gb: float | None = 1.0
 
     def path(self, name: str) -> Path:
         value = getattr(self, name)
