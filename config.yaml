@@ -11,7 +11,6 @@ mflux_models:
   remote_url: https://huggingface.co/mflux-community
 
 huggingface_models:
-  huggingface_models: /Volumes/Crucial500Gb/HUGGINGFACE_HUB_ACTIVE
   local_directory: /Volumes/Crucial500Gb/HUGGINGFACE_HUB_ACTIVE
   allow_hf_access: true
   allow_model_download: false
