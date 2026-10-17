@@ -22,8 +22,16 @@ def test_the_stage_1_models_and_their_commands(registry: Registry) -> None:
     assert {spec for spec in supported.values()} == {
         "mflux-generate-z-image-turbo", "mflux-generate-z-image", "mflux-generate-ernie-image-turbo",
         "mflux-generate-ernie-image", "mflux-generate-krea2", "mflux-generate-lens", "mflux-generate-boogu",
-        "mflux-generate-ideogram4", "mflux-generate-qwen", "mflux-generate-qwen-edit",
+        "mflux-generate-ideogram4", "mflux-generate-qwen", "mflux-generate-qwen-edit", "mflux-generate-flux3",
     }  # fmt: skip
+
+
+def test_the_flux3_models_run_through_the_adapter(registry: Registry) -> None:
+    """Bug: a FLUX 3 model shows as unsupported, or the adapter takes a model that is not FLUX 3 Image Klein."""
+    for name in ("flux3-image-klein", "flux3-image-klein-base"):
+        entry = registry.find(name)
+        assert entry.supported and entry.spec.module == "mlx_imagine.adapters.flux3"
+    assert registry.find("flux2-klein-4b").spec is None
 
 
 def test_models_without_steps_or_in_stage_2_are_listed_with_the_reason(registry: Registry) -> None:

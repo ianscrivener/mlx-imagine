@@ -5,8 +5,8 @@
 
 | Model | Model Family | Priority | VLG | Adaptor |
 | :------------------------------------- | -------------------------- | :------: | :-: | :-----: |
-| Flux.3 Klein Turbo            | flux3 | 1 | ❌ | |
-| Flux.3 Klein | flux3 | 8 | ❌ | |
+| Flux.3 Klein Turbo            | flux3 | 1 | ❌ | ✅ |
+| Flux.3 Klein | flux3 | 8 | ❌ | ✅ |
 | Qwen-Image 2.1 Turbo | qwen-image-2.1 | 1 | ❌ | |
 | Flux2 Klein 9B | flux2 | 2 | ❌ | |
 | Flux2 Klein 9B KV | flux2 | 2 | ❌ | |

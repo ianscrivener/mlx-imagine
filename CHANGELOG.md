@@ -8,6 +8,7 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Added
 
+- Adapters for mflux models that have no command steps. The first adapter runs FLUX 3 Image Klein.
 - `mlx-imagine`: a REST API and an MCP server for the 10 mflux commands that have command steps.
 - A job queue that runs one job at a time, with progress events and cancel.
 - Load, unload and generate, with low-RAM mode.

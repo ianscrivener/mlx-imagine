@@ -85,6 +85,13 @@ COMMANDS: tuple[CommandSpec, ...] = (
                 "QwenImageEditCommand", f"{_M}.qwen.weights.qwen_weight_definition.QwenWeightDefinition"),
 )  # fmt: skip
 
+# Models whose mflux command has no command steps. Each adapter is a module in mlx_imagine.adapters.
+_A = "mlx_imagine.adapters"
+ADAPTER_COMMANDS: tuple[CommandSpec, ...] = (
+    CommandSpec("flux3", "mflux-generate-flux3", f"{_A}.flux3", "Flux3KleinCommand",
+                f"{_M}.flux3.weights.flux3_weight_definition.Flux3KleinWeightDefinition"),
+)  # fmt: skip
+
 # No command is in stage 2 now. ControlNet is a non-goal (NON-GOALS.md).
 STAGE_2_COMMANDS: tuple[CommandSpec, ...] = ()
 
@@ -178,7 +185,9 @@ def _canonical(name: str | None, available: dict[str, Any]) -> str | None:
 
 class Registry:
     def __init__(
-        self, commands: tuple[CommandSpec, ...] = COMMANDS, stage_2: tuple[CommandSpec, ...] = STAGE_2_COMMANDS
+        self,
+        commands: tuple[CommandSpec, ...] = COMMANDS + ADAPTER_COMMANDS,
+        stage_2: tuple[CommandSpec, ...] = STAGE_2_COMMANDS,
     ):
         self._commands = commands
         self._stage_2 = stage_2

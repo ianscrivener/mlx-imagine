@@ -4,8 +4,8 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
-| T-01 | 1 | Adapter contract for models without upstream steps | `model-adapters` |
-| T-02 | 1 | Flux.3 Klein Turbo | `adapter-flux3-klein-turbo` |
+| T-01 | 1 | Adapter contract for models without upstream steps ✅ | `model-adapters` |
+| T-02 | 1 | Flux.3 Klein Turbo ✅ (not run with real weights) | `adapter-flux3-klein-turbo` |
 | T-03 | 1 | MCP generate tool waits too long | `mcp-timeout` |
 | T-04 | 1 | Exception text goes into responses | `error-leak` |
 | T-05 | 2 | Adapter: Flux2 Klein 9B and Flux2 Klein 9B KV | `adapter-flux2-klein-9b` |

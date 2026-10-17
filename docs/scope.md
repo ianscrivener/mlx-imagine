@@ -71,7 +71,7 @@ These facts come from the mflux code at version 0.23.0.
 
 The repository has 35 image commands. mlx-imagine can drive a command only if the command has a command class with `validate()`, `load()` and `generate()`. mlx-imagine calls only these steps and does not write its own (the same rule as mflux's plugin rule 3).
 
-These 10 commands have the steps. Stage 1 supports all of them.
+These 10 commands have the steps. Stage 1 supports all of them. FLUX 3 Image Klein has no steps, so `src/mlx_imagine/adapters/flux3.py` supplies them (ROADMAP.md T-01).
 
 | Command | Class |
 |---|---|
