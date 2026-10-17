@@ -11,6 +11,7 @@ from mflux.callbacks.callback_manager import CallbackManager
 from mflux.cli.parser.parsers import CommandLineParser
 from mflux.models.common.cli import save
 from mflux.models.common.resolution.path_resolution import PathResolution
+from mflux.models.flux2.cli import flux2_generate
 from mflux.models.flux3.cli import flux3_generate
 from mflux.utils.generated_image import GeneratedImage
 
@@ -20,6 +21,7 @@ PINNED = {
     # engine.build_model_for_save copies mflux-save's main() from step 1 on. See NOTICE.
     "save.main": (save.main, "3205d015789d2262"),
     # adapters/flux3.py copies the statements of this main(). See NOTICE.
+    "flux2_generate.main": (flux2_generate.main, "98b33e79c5f6572d"),
     "flux3_generate.main": (flux3_generate.main, "7d123c7e6603e472"),
     # engine._do_generate calls these two private helpers instead of register_callbacks, whose memory saver
     # frees the text encoder of a model the server keeps loaded.

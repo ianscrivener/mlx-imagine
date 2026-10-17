@@ -8,8 +8,8 @@
 | Flux.3 Klein Turbo            | flux3 | 1 | ❌ | ✅ |
 | Flux.3 Klein | flux3 | 8 | ❌ | ✅ |
 | Qwen-Image 2.1 Turbo | qwen-image-2.1 | 1 | ❌ | |
-| Flux2 Klein 9B | flux2 | 2 | ❌ | |
-| Flux2 Klein 9B KV | flux2 | 2 | ❌ | |
+| Flux2 Klein 9B | flux2 | 2 | ❌ | ✅ |
+| Flux2 Klein 9B KV | flux2 | 2 | ❌ | ✅ |
 | Z-Image Turbo | z-image | | ✅ | |
 | Krea 2 Raw | krea2 | | ✅ | |
 | Krea 2 Turbo | krea2 | | ✅ | |
@@ -23,7 +23,7 @@
 | ERNIE-Image Base | ernie-image | | ✅ | |
 | Fibo-1.5 | fibo | 8 | ❌ | |
 | Fibo-Edit-1.5-Base | fibo | 8 | ❌ | |
-| Flux.2 Klein Base 9B | flux2 | 8 | ❌ | |
+| Flux.2 Klein Base 9B | flux2 | 8 | ❌ | ✅ |
 | Qwen-Image 2.1 | qwen-image-2.1 | 8 | ❌ | |
 | Z-Image Base | z-image | | ✅ | |
 

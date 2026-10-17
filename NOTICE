@@ -42,3 +42,6 @@ This product includes software derived from mflux
 
   src/mlx_imagine/adapters/flux3.py copies the statements of main() in
   mflux's src/mflux/models/flux3/cli/flux3_generate.py.
+
+  src/mlx_imagine/adapters/flux2.py copies the statements of main() in
+  mflux's src/mflux/models/flux2/cli/flux2_generate.py.

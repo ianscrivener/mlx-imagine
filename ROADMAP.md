@@ -4,11 +4,8 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
-| T-01 | 1 | Adapter contract for models without upstream steps ✅ | `model-adapters` |
-| T-02 | 1 | Flux.3 Klein Turbo ✅ (not run with real weights) | `adapter-flux3-klein-turbo` |
 | T-03 | 1 | MCP generate tool waits too long | `mcp-timeout` |
 | T-04 | 1 | Exception text goes into responses | `error-leak` |
-| T-05 | 2 | Adapter: Flux2 Klein 9B and Flux2 Klein 9B KV | `adapter-flux2-klein-9b` |
 | T-06 | 2 | Pure ASGI auth (event stream) | `asgi-auth` |
 | T-07 | 2 | Request size limits | `request-limits` |
 | T-08 | 3 | Refuse options that a model ignores | `ignored-options` |
@@ -24,6 +21,16 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 | T-22 | 8 | Startup warning and proxy example | `proxy-example` |
 | T-23 | 9 | MCP setup guide | `mcp-guide` |
 
+
+---
+## Done
+| Task | Priority | Feature | Slug |
+| :-: | :-: | --- | --- |
+| T-01 | 1 | Adapter contract for models without upstream steps | `model-adapters` |
+| T-02 | 1 | Flux.3 Klein | `adapter-flux3-klein-turbo` |
+| T-05 | 2 | Adapter: Flux2 Klein 9B and Flux2 Klein 9B KV | `adapter-flux2-klein-9b` |
+
+---
 ## Details
 
 ### `model-adapters`
@@ -35,7 +42,7 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 - Also: slow tests for load/unload cycles and memory leaks. Run by hand only.
 
 ### `adapter-remaining`
-- Qwen-Image 2.1 and Turbo, Fibo (3), Ming-Image, Flux.2 Klein Base 9B.
+- Qwen-Image 2.1 and Turbo, Fibo (3), Ming-Image.
 
 ### Unchecked
 - Phase 0 to 4 in [docs/scope.md](docs/scope.md) section 4 (CI and PyPI publishing, OpenAPI spec, README). Status not verified here.

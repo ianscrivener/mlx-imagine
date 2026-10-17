@@ -90,6 +90,8 @@ _A = "mlx_imagine.adapters"
 ADAPTER_COMMANDS: tuple[CommandSpec, ...] = (
     CommandSpec("flux3", "mflux-generate-flux3", f"{_A}.flux3", "Flux3KleinCommand",
                 f"{_M}.flux3.weights.flux3_weight_definition.Flux3KleinWeightDefinition"),
+    CommandSpec("flux2", "mflux-generate-flux2", f"{_A}.flux2", "Flux2KleinCommand",
+                f"{_M}.flux2.weights.flux2_weight_definition.Flux2KleinWeightDefinition"),
 )  # fmt: skip
 
 # No command is in stage 2 now. ControlNet is a non-goal (NON-GOALS.md).
