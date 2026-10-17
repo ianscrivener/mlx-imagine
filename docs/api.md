@@ -57,7 +57,7 @@ Error codes:
 | `not_found` | 404 | The item does not exist. |
 | `model_not_loaded` | 409 | A generate job has no model to use. |
 | `model_in_use` | 409 | The model is loaded, or a job in the queue uses it. |
-| `confirm_required` | 409 | A delete request does not have `confirm` set to `true`. |
+| `confirm_required` | 409 | A delete request does not have `confirm` set to `true`. A download request does not have it either, and `require_model_confirmation` is `true`. |
 | `option_invalid` | 422 | An mflux option has a value that is not correct. |
 | `option_blocked` | 422 | The server does not accept this mflux option (scope 3.6). |
 | `option_for_load` | 422 | This option belongs to the load request, not to the generate request. |
@@ -205,6 +205,20 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
 
 ### 3.3 Configuration
 
+Two things describe a model: its format and its location.
+
+| Format | Meaning | Settings section |
+|---|---|---|
+| mflux format | Safetensors in the layout of an mflux saved model. Often quantized. | `mflux_models` |
+| Hugging Face format | Safetensors in the layout of the original repository, in the Hugging Face hub cache. | `huggingface_models` |
+
+| Location | Meaning | Setting |
+|---|---|---|
+| Local | A folder on this Mac. | `local_directory` |
+| Remote | A Hugging Face address that the server can download from. | `remote_url` (mflux format only) |
+
+Each section has a `local_directory`. `mflux_models` also has a `remote_url`: the Hugging Face organization with ready-made mflux models. `huggingface_models` needs no URL, because its remote location is the Hugging Face Hub.
+
 `GET /v1/config` returns all settings in the layout of the config file. `PATCH /v1/config` changes one or more settings and writes them to the config file. The default file is `~/.config/mlx-imagine/config.yaml`. The write keeps the keys that the server does not use yet, but not the comments.
 
 | Setting | Type | Default | Restart | Description |
@@ -212,13 +226,16 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
 | `mflux_config.default_quantize` | integer | none | No | The quantization for a load request without `quantize`. It must be in `allowed_quantize`. |
 | `mflux_config.allowed_quantize` | string | `q3 q4 q5 q6 q8 bf16` | No | The quantizations that load and save requests can use. `bf16` allows a load without quantization. |
 | `mflux_config.cache_dir` | path | mflux default | Yes | The mflux cache. Sets `MFLUX_CACHE_DIR`. |
-| `mflux_models.dir` | path | `~/mlx-imagine/models` | No | The saved mflux models. |
+| `mflux_models.local_directory` | path | `~/mlx-imagine/models` | No | The saved mflux models. |
+| `mflux_models.remote_url` | string | `https://huggingface.co/mflux-community` | No | The Hugging Face organization with ready-made mflux models. Not used yet. For a later download of saved mflux models. |
 | `mflux_models.allow_download` | boolean | `true` | No | Not used yet. For a later download of saved mflux models. |
 | `mflux_models.allow_delete` | boolean | `true` | No | `false` refuses each delete of a saved model. |
 | `mflux_models.max_models` | integer | none | No | A save fails when the directory holds this number of models. |
 | `mflux_models.max_size_gb` | number | none | No | A save fails when the models use this size. |
-| `huggingface_models.dir` | path | `huggingface_hub` default | Yes | The Hugging Face hub cache (the folder with the `models--*` folders). Sets `HF_HUB_CACHE`. |
-| `huggingface_models.allow_download` | boolean | `true` | No | `false` refuses each download. |
+| `huggingface_models.local_directory` | path | `huggingface_hub` default | Yes | The Hugging Face hub cache (the folder with the `models--*` folders). Sets `HF_HUB_CACHE`. |
+| `huggingface_models.allow_hf_access` | boolean | `true` | Yes | `false` sets `HF_HUB_OFFLINE=1`. The server never reaches Hugging Face, and a download request returns `operation_disabled`. |
+| `huggingface_models.allow_model_download` | boolean | `true` | No | `false` lets a download fetch small files only (JSON, text). It skips weight files (`.safetensors`, `.ckpt`, `.gguf`, `.bin`, `.pt`, `.pth`, `.onnx`, `.h5`, `.msgpack`). The job result has `weights_skipped: true`, and `complete` stays `false`. |
+| `huggingface_models.require_model_confirmation` | boolean | `false` | No | `true` makes a download request need `confirm: true`. Without it, the server returns `confirm_required` and the size of the download. Applies only when `allow_model_download` is `true`. |
 | `huggingface_models.allow_delete` | boolean | `true` | No | `false` refuses each delete from the cache. |
 | `huggingface_models.max_models` | integer | none | No | A download of a new model fails when the cache holds this number of mflux models. |
 | `huggingface_models.max_size_gb` | number | none | No | A download of a new model fails when the mflux models in the cache use this size. |
@@ -240,7 +257,7 @@ A relative path in the config file is relative to the directory of the file. The
 `PATCH /v1/config` request:
 
 ```json
-{ "memory_limit_gb": 28, "huggingface_models": { "dir": "/Volumes/Extreme2Tb/hub" } }
+{ "memory_limit_gb": 28, "huggingface_models": { "local_directory": "/Volumes/Extreme2Tb/hub" } }
 ```
 
 Response:
@@ -249,7 +266,7 @@ Response:
 {
   "config": { "...": "all settings" },
   "applied": ["memory_limit_gb"],
-  "restart_required": ["huggingface_models.dir"]
+  "restart_required": ["huggingface_models.local_directory"]
 }
 ```
 
@@ -349,10 +366,11 @@ The schemas do not include blocked options. The names are the `argparse` destina
 `POST /v1/models/huggingface/download` request:
 
 ```json
-{ "model": "z-image-turbo" }
+{ "model": "z-image-turbo", "confirm": true }
 ```
 
 - `model` is a registry name, an alias or a Hugging Face repository ID in the registry.
+- `confirm` is needed only when `huggingface_models.require_model_confirmation` is `true`.
 - The server downloads only the files that the model needs.
 - The job `result` is the model entry from `GET /v1/models/huggingface`.
 

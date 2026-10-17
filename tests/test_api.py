@@ -1,6 +1,7 @@
 """The REST API over the fake command: auth, error bodies, the job flow, uploads and config."""
 
 import io
+import os
 import time
 from collections.abc import Iterator
 
@@ -83,11 +84,11 @@ def test_an_upload_can_be_the_image_path_of_a_generate_request(client: TestClien
 def test_a_config_change_reports_which_settings_need_a_restart(client: TestClient, tmp_path) -> None:
     """Bug: a change to the hub directory claims to apply at once, though huggingface_hub read the old value at
     import."""
-    changes = {"queue": {"queue_max_length": 5}, "huggingface_models": {"dir": str(tmp_path / "hub")}}
+    changes = {"queue": {"queue_max_length": 5}, "huggingface_models": {"local_directory": str(tmp_path / "hub")}}
     response = client.patch("/v1/config", json=changes)
     assert response.status_code == 200, response.text
     assert response.json()["applied"] == ["queue.queue_max_length"]
-    assert response.json()["restart_required"] == ["huggingface_models.dir"]
+    assert response.json()["restart_required"] == ["huggingface_models.local_directory"]
     assert client.get("/v1/server").json()["restart_required"] is True
     assert client.patch("/v1/config", json={"server": {"port": "x"}}).status_code == 400
     assert client.patch("/v1/config", json={"no_such": 1}).status_code == 400
@@ -97,7 +98,7 @@ def test_the_allow_flags_and_limits_refuse_downloads_and_deletes(client: TestCli
     """Bug: allow_delete: false in the config does not stop a delete request."""
     engine.settings.hf_allow_delete = False
     engine.settings.mflux_allow_delete = False
-    engine.settings.hf_allow_download = False
+    engine.settings.hf_allow_access = False
     assert client.delete("/v1/models/saved/x?confirm=true").json()["error"]["code"] == "operation_disabled"
     assert client.delete("/v1/models/huggingface/a/b?confirm=true").status_code == 403
     response = client.post("/v1/models/huggingface/download", json={"model": "z-image-turbo"})
@@ -143,3 +144,26 @@ def test_a_save_name_that_is_not_a_string_is_a_400_not_a_500(client: TestClient,
     response = client.post("/v1/models/saved", json={"model": "z-image-turbo", "quantize": 8, "name": name})
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "invalid_request"
+
+
+def test_a_download_asks_for_confirmation_with_the_size(client: TestClient, engine: Engine, monkeypatch) -> None:
+    """Bug: require_model_confirmation is true, and a download request without confirm starts a download of
+    gigabytes with no question."""
+    engine.settings.hf_require_model_confirmation = True
+    monkeypatch.setattr("mlx_imagine.hf_models.estimate_bytes", lambda entry: 4_200_000_000)
+    response = client.post("/v1/models/huggingface/download", json={"model": "z-image-turbo"})
+    assert response.status_code == 409 and response.json()["error"]["code"] == "confirm_required"
+    assert "4.2 GB" in response.json()["error"]["message"]
+    engine.settings.hf_allow_model_download = False
+    assert client.post("/v1/models/huggingface/download", json={"model": "z-image-turbo"}).status_code == 202
+
+
+def test_offline_mode_follows_allow_hf_access(monkeypatch) -> None:
+    """Bug: allow_hf_access is false, and huggingface_hub still reaches the network."""
+    from mlx_imagine.config import Settings, apply_environment
+
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    apply_environment(Settings())
+    assert "HF_HUB_OFFLINE" not in os.environ
+    apply_environment(Settings(hf_allow_access=False))
+    assert os.environ["HF_HUB_OFFLINE"] == "1"

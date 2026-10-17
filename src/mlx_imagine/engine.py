@@ -471,19 +471,28 @@ class Engine:
 
     # -- download, save and delete --------------------------------------------------------------------------------
 
-    def submit_download(self, model: str) -> Job:
-        if not self.settings.hf_allow_download:
-            raise disabled("huggingface_models.allow_download is false.")
+    def submit_download(self, model: str, confirm: bool = False) -> Job:
+        if not self.settings.hf_allow_access:
+            raise disabled("huggingface_models.allow_hf_access is false.")
         entry = self.registry.supported(model)
+        with_weights = self.settings.hf_allow_model_download
+        if with_weights and self.settings.hf_require_model_confirmation and not confirm:
+            size = hf_models.estimate_bytes(entry)
+            amount = f"{size / GB:.1f} GB of" if size else "an unknown amount of"
+            raise conflict(
+                "confirm_required",
+                f"You are about to download {amount} model data from Hugging Face. Set confirm to true to continue.",
+                model=entry.name,
+            )
         cached = hf_models.list_models(self.registry)
         if not any(item["model_name"] == entry.name for item in cached):
             _check_limits("huggingface_models", cached, self.settings.hf_max_models, self.settings.hf_max_size_gb)
-        job = Job("download", {"model": entry.name}, lambda job: self._do_download(job, entry))
+        job = Job("download", {"model": entry.name}, lambda job: self._do_download(job, entry, with_weights))
         return self.queue.submit(job)
 
-    def _do_download(self, job: Job, entry: ModelEntry) -> dict[str, Any]:
+    def _do_download(self, job: Job, entry: ModelEntry, with_weights: bool) -> dict[str, Any]:
         with self._job(job):
-            return hf_models.download(self.registry, entry, job)
+            return hf_models.download(self.registry, entry, job, with_weights)
 
     def submit_save(self, request: dict[str, Any]) -> Job:
         model = request.get("model")

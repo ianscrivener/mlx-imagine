@@ -99,7 +99,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         model = body.get("model")
         if not isinstance(model, str):
             raise invalid_request("The download request needs 'model'.")
-        return engine.queue.describe(engine.submit_download(model))
+        return engine.queue.describe(engine.submit_download(model, body.get("confirm") is True))
 
     @app.delete("/v1/models/huggingface/{owner}/{repo}")
     def delete_huggingface(owner: str, repo: str, confirm: bool = Query(False)) -> dict[str, Any]:

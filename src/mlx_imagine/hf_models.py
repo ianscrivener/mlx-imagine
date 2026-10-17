@@ -89,24 +89,51 @@ def _progress_class(job: Job) -> type:
     return JobProgress
 
 
-def download(registry: Registry, entry: ModelEntry, job: Job) -> dict[str, Any]:
+# Files that hold model weights. allow_model_download: false skips them and still fetches small files.
+WEIGHT_PATTERNS = ["*.safetensors", "*.ckpt", "*.gguf", "*.bin", "*.pt", "*.pth", "*.onnx", "*.h5", "*.msgpack"]
+
+
+def _targets(entry: ModelEntry) -> list[tuple[str, list[str]]]:
+    assert entry.spec is not None
+    return [(entry.hf_repo, entry.spec.download_patterns(entry.name)), *entry.spec.extra_downloads()]
+
+
+def estimate_bytes(entry: ModelEntry) -> int | None:
+    """The size of the files a download fetches, from the Hub. None when the Hub does not answer.
+    Files that are in the cache already are counted too, so the size is an upper bound."""
+    from huggingface_hub import HfApi
+    from huggingface_hub.utils import filter_repo_objects
+    from mflux.models.common.resolution.model_revisions import ModelRevisions
+
+    total = 0
+    try:
+        for repo_id, patterns in _targets(entry):
+            info = HfApi().model_info(repo_id, revision=ModelRevisions.get(repo_id), files_metadata=True)
+            files = filter_repo_objects(info.siblings or [], allow_patterns=patterns, key=lambda f: f.rfilename)
+            total += sum(file.size or 0 for file in files)
+    except Exception:  # noqa: BLE001 -- no network, or the Hub refuses: the caller asks without a size
+        return None
+    return total
+
+
+def download(registry: Registry, entry: ModelEntry, job: Job, with_weights: bool = True) -> dict[str, Any]:
     from huggingface_hub import snapshot_download
     from mflux.models.common.resolution.model_revisions import ModelRevisions
 
     if not entry.supported or entry.spec is None:
         raise ApiError("model_not_supported", 422, f"{entry.name}: {entry.reason}", {"model": entry.name})
-    targets = [(entry.hf_repo, entry.spec.download_patterns(entry.name))]
-    targets += entry.spec.extra_downloads()
+    targets = _targets(entry)
     progress = _progress_class(job)
     for repo_id, patterns in targets:
         job.set_progress({"phase": "downloading", "repo_id": repo_id})
         snapshot_download(  # ty: ignore[no-matching-overload]
             repo_id=repo_id,
             allow_patterns=patterns,
+            ignore_patterns=None if with_weights else WEIGHT_PATTERNS,
             revision=ModelRevisions.get(repo_id),
             tqdm_class=progress,
         )
-    return entry_for_cache(registry, entry)
+    return {**entry_for_cache(registry, entry), "weights_skipped": not with_weights}
 
 
 def delete(registry: Registry, repo_id: str) -> dict[str, Any]:

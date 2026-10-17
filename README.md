@@ -1,6 +1,14 @@
 # mlx-imagine
 
-`mlx-imagine` is a server built on [mflux](https://github.com/mflux-community/mflux), which it uses as a library. Its command, `mlx-imagine`, runs a server that keeps one mflux image model in memory and runs one job at a time. Clients use a REST API or an MCP server.
+> Local AI image creation on your Mac M-Series computer.
+> It is AI-first: your AI agent drives it over MCP.
+> It also has a REST API for programmatic image generation.
+> builds upon [`MFlux`](https://github.com/mflux-community/mflux)
+
+
+
+
+is a server built on [mflux](https://github.com/mflux-community/mflux), which it uses as a library. Its command, `mlx-imagine`, runs a server that keeps one mflux image model in memory and runs one job at a time. Clients use a REST API or an MCP server.
 
 Status: stage 1, pre-release. The tests use fake models only. Nobody has run this version with real weights yet.
 
@@ -15,26 +23,9 @@ Status: stage 1, pre-release. The tests use fake models only. Nobody has run thi
 
 Training is not supported. Use `mflux-train`.
 
-## Supported models (stage 1)
 
-The server runs a model only through the command steps (`validate`, `load`, `generate`) of its mflux command. These commands have the steps:
-
-| Model | mflux command |
-|---|---|
-| `z-image-turbo` | `mflux-generate-z-image-turbo` |
-| `z-image` | `mflux-generate-z-image` |
-| `ernie-image-turbo` | `mflux-generate-ernie-image-turbo` |
-| `ernie-image` | `mflux-generate-ernie-image` |
-| `krea-2` | `mflux-generate-krea2` |
-| `lens-turbo` | `mflux-generate-lens` |
-| `boogu-image-turbo` | `mflux-generate-boogu` |
-| `ideogram-4-fp8` | `mflux-generate-ideogram4` |
-| `qwen-image` | `mflux-generate-qwen` |
-| `qwen-image-edit`, `qwen-image-edit-2511` | `mflux-generate-qwen-edit` |
-
-`GET /v1/models/supported` lists every mflux model and gives the reason when the server cannot run it. FLUX, FIBO, Ming, Qwen-Image-2.1 and the upscalers have no command steps in mflux yet. LoRA comes in stage 2.
-
-## Install
+---
+### Install
 
 ```sh
 uv tool install mflux --with-executables-from mlx-imagine
@@ -47,7 +38,8 @@ uv sync --locked
 uv run mlx-imagine --help
 ```
 
-## Start the server
+---
+### Start the server
 
 ```sh
 mlx-imagine
@@ -77,10 +69,10 @@ mflux_config:
   default_quantize: 8
   allowed_quantize: "q4 q6 q8 bf16"
 mflux_models:
-  dir: /Volumes/Models/mflux
+  local_directory: /Volumes/Models/mflux
   allow_delete: true
 huggingface_models:
-  dir: /Volumes/Models/huggingface/hub
+  local_directory: /Volumes/Models/huggingface/hub
 image_directories:
   output: ./output
 server:

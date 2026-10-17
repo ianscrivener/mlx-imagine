@@ -25,7 +25,7 @@ def test_a_yaml_config_file_round_trips(tmp_path) -> None:
     path.write_text(
         "# local test\n"
         "server:\n  port: 9001\n"
-        "mflux_models:\n  dir: /tmp/models\n  some_future_key: 1\n"
+        "mflux_models:\n  local_directory: /tmp/models\n  some_future_key: 1\n"
         "mflux_config:\n  allowed_quantize: q4 q8 bf16\n"
         "memory_limit_gb: 28\n"
     )
@@ -74,7 +74,7 @@ def test_a_bad_value_changes_nothing() -> None:
 
 
 def test_apply_environment_points_mflux_and_the_hub_at_the_configured_directories(monkeypatch, tmp_path) -> None:
-    """Bug: a user's HF_HUB_CACHE stays set and overrides huggingface_models.dir."""
+    """Bug: a user's HF_HUB_CACHE stays set and overrides huggingface_models.local_directory."""
     monkeypatch.setenv("HF_HUB_CACHE", "/somewhere/else")
     monkeypatch.setenv("MFLUX_CACHE_DIR", "/old")
     config.apply_environment(config.Settings(hf_hub_cache=str(tmp_path / "hub"), mflux_cache_dir=str(tmp_path / "mf")))

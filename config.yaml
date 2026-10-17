@@ -3,15 +3,18 @@ mflux_config:
   allowed_quantize: "q3 q4 q5 q6 q8 bf16"
 
 mflux_models:
-  dir: /Volumes/Extreme2Tb/MFlux-Models
+  local_directory: /Volumes/Extreme2Tb/MFlux-Models
   allow_download: true
   allow_delete: true
   max_models: 10
   max_size_gb: 150
+  remote_url: https://huggingface.co/mflux-community
 
 huggingface_models:
-  dir: /Volumes/Crucial500Gb/HUGGINGFACE_HUB_ACTIVE
-  allow_download: true
+  local_directory: /Volumes/Crucial500Gb/HUGGINGFACE_HUB_ACTIVE
+  allow_hf_access: true
+  allow_model_download: false
+  require_model_confirmation: true
   allow_delete: true
   max_models: 10
   max_size_gb: 150
@@ -29,18 +32,12 @@ server:
   use_tls: false
 
 
-
-
-
 # The Mac has 36 GB of RAM. mx.set_memory_limit does not stop swap growth, so watch the memory during a run.
 memory_limit_gb: 28
-
 
 queue:
   queue_max_length: 100
   job_history: 200
-
-
 
 
 # MLX keeps freed buffers for reuse. One 512x512 image left 14.8 GB in this cache without a limit.

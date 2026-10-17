@@ -48,7 +48,7 @@ A real model can use most of the memory of the machine. A load once stopped the 
 3. Report the memory before the run: `memory_pressure | tail -1` and `sysctl vm.swapusage`.
 4. Run `just test-real`. Give `steps` and `model` to run fewer checks, for example `just test-real "load,seeds,unload"`.
    - The steps are `load`, `seeds`, `cancel`, `img2img`, `mcp`, `lowram`, `save` and `unload`.
-   - The default model is the saved model `z-image-turbo-q8` in `mflux_models.dir` of `config.yaml`.
+   - The default model is the saved model `z-image-turbo-q8` in `mflux_models.local_directory` of `config.yaml`.
    - `just test-real-save` saves and quantizes `z-image-turbo` from bf16 weights, about 20 GB. It then deletes the save.
 5. `scripts/real/run.sh` starts the server under a watchdog. The watchdog stops the server and its child processes when free memory is less than 5%, or when swap grows by more than 10 GB.
 6. Read the result with `just test-real-log`. Each check gives one `PASS` or `FAIL` line. Report the lowest free memory and the swap that the watchdog recorded.

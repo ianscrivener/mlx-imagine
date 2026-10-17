@@ -120,9 +120,12 @@ def build_mcp(engine: Engine) -> Any:
         return saved_models.list_models(engine.models_dir)
 
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=True))
-    async def download_model(model: str, ctx: Context, wait_seconds: float = 0) -> dict[str, Any]:
-        """Download an mflux model from Hugging Face. Returns the job. Read the result with get_job."""
-        return await wait(call(engine.submit_download, model), wait_seconds, ctx)
+    async def download_model(
+        model: str, ctx: Context, wait_seconds: float = 0, confirm: bool = False
+    ) -> dict[str, Any]:
+        """Download an mflux model from Hugging Face. Returns the job. Read the result with get_job.
+        If the server answers confirm_required, ask the user, then send confirm as true."""
+        return await wait(call(engine.submit_download, model, confirm), wait_seconds, ctx)
 
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=False))
     async def save_model(model: str, quantize: Literal[3, 4, 5, 6, 8], ctx: Context, name: str | None = None,

@@ -2,7 +2,7 @@
 
 Usage: suite.py STEPS MODEL IMAGE [URL]
   STEPS  comma-separated: load,seeds,cancel,img2img,mcp,lowram,save,unload
-  MODEL  a saved model name in mflux_models.dir, or a registry name
+  MODEL  a saved model name in mflux_models.local_directory, or a registry name
   IMAGE  a PNG for the img2img step
 
 This loads real weights. Run it only through scripts/real/run.sh (just test-real), which starts the memory

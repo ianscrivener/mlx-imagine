@@ -3,8 +3,8 @@
 The config file is YAML (a .toml file is read as TOML) with these sections:
 
     mflux_config:        default_quantize, allowed_quantize, cache_dir
-    mflux_models:        dir, allow_download, allow_delete, max_models, max_size_gb
-    huggingface_models:  dir, allow_download, allow_delete, max_models, max_size_gb
+    mflux_models:        local_directory, remote_url, allow_download, allow_delete, max_models, max_size_gb
+    huggingface_models:  local_directory, allow_hf_access, allow_model_download, require_model_confirmation, allow_delete, max_models, max_size_gb
     image_directories:   input, output, max_upload_mb
     server:              host, port, require_api_token, api_token, use_tls
     queue:               queue_max_length, job_history
@@ -49,13 +49,16 @@ class Settings:
     mflux_cache_dir: str | None = None
     # mflux_models
     model_dir: str = "~/mlx-imagine/models"
+    mflux_remote_url: str = "https://huggingface.co/mflux-community"
     mflux_allow_download: bool = True
     mflux_allow_delete: bool = True
     mflux_max_models: int | None = None
     mflux_max_size_gb: float | None = None
     # huggingface_models
     hf_hub_cache: str | None = None
-    hf_allow_download: bool = True
+    hf_allow_access: bool = True
+    hf_allow_model_download: bool = True
+    hf_require_model_confirmation: bool = False
     hf_allow_delete: bool = True
     hf_max_models: int | None = None
     hf_max_size_gb: float | None = None
@@ -104,13 +107,16 @@ FIELDS: dict[tuple[str | None, str], tuple[str, tuple[type, ...]]] = {
     ("mflux_config", "default_quantize"): ("default_quantize", (int, type(None))),
     ("mflux_config", "allowed_quantize"): ("allowed_quantize", (str, list)),
     ("mflux_config", "cache_dir"): ("mflux_cache_dir", (str, type(None))),
-    ("mflux_models", "dir"): ("model_dir", (str,)),
+    ("mflux_models", "local_directory"): ("model_dir", (str,)),
+    ("mflux_models", "remote_url"): ("mflux_remote_url", (str,)),
     ("mflux_models", "allow_download"): ("mflux_allow_download", (bool,)),
     ("mflux_models", "allow_delete"): ("mflux_allow_delete", (bool,)),
     ("mflux_models", "max_models"): ("mflux_max_models", (int, type(None))),
     ("mflux_models", "max_size_gb"): ("mflux_max_size_gb", _OPTIONAL_NUMBER),
-    ("huggingface_models", "dir"): ("hf_hub_cache", (str, type(None))),
-    ("huggingface_models", "allow_download"): ("hf_allow_download", (bool,)),
+    ("huggingface_models", "local_directory"): ("hf_hub_cache", (str, type(None))),
+    ("huggingface_models", "allow_hf_access"): ("hf_allow_access", (bool,)),
+    ("huggingface_models", "allow_model_download"): ("hf_allow_model_download", (bool,)),
+    ("huggingface_models", "require_model_confirmation"): ("hf_require_model_confirmation", (bool,)),
     ("huggingface_models", "allow_delete"): ("hf_allow_delete", (bool,)),
     ("huggingface_models", "max_models"): ("hf_max_models", (int, type(None))),
     ("huggingface_models", "max_size_gb"): ("hf_max_size_gb", _OPTIONAL_NUMBER),
@@ -133,7 +139,7 @@ TYPES = {field: accepted for field, accepted in FIELDS.values()}
 
 # A change to one of these takes effect only after a restart (docs/scope.md 3.9).
 RESTART_FIELDS = frozenset(
-    {"hf_hub_cache", "mflux_cache_dir", "host", "port", "require_api_token", "api_token", "use_tls"}
+    {"hf_hub_cache", "hf_allow_access", "mflux_cache_dir", "host", "port", "require_api_token", "api_token", "use_tls"}
 )
 PATH_FIELDS = frozenset({"hf_hub_cache", "mflux_cache_dir", "model_dir", "input_dir", "output_dir"})
 POSITIVE_FIELDS = frozenset(
@@ -339,8 +345,10 @@ def check_startup(settings: Settings) -> None:
 def apply_environment(settings: Settings) -> None:
     """Set the environment that mflux and huggingface_hub read at import. Call before importing them."""
     if settings.hf_hub_cache:
-        # huggingface_models.dir holds the models--<owner>--<name> folders: it is the hub cache itself.
+        # huggingface_models.local_directory holds the models--<owner>--<name> folders: it is the hub cache itself.
         os.environ["HF_HUB_CACHE"] = str(Path(settings.hf_hub_cache).expanduser())
+    if not settings.hf_allow_access:
+        os.environ["HF_HUB_OFFLINE"] = "1"
     if settings.mflux_cache_dir:
         os.environ["MFLUX_CACHE_DIR"] = str(Path(settings.mflux_cache_dir).expanduser())
 
