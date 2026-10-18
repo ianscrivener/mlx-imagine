@@ -29,7 +29,7 @@ dev-check: dev test
 
 # Lint the Markdown docs and the skills with the ASD-STE100 linter
 dev-docs:
-    python3 {{ ste_lint }} README.md AGENTS.md CHANGELOG.md docs/*.md docs/development/*.md .agents/skills/imagine-*/SKILL.md .github/pull_request_template.md
+    python3 {{ ste_lint }} README.md AGENTS.md CHANGELOG.md docs/*.md docs/development/*.md customer_testing/*/*.md .agents/skills/imagine-*/SKILL.md .github/pull_request_template.md
 
 # Fail when git tracks a file that does not belong in the repository (scratch files, weights, logs)
 dev-stray:
