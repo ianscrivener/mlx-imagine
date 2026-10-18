@@ -19,7 +19,7 @@ ste_lint := ".agents/skills/asd-ste100/scripts/ste-lint.py"
 
 # Show all recipes
 default:
-    @just --list --unsorted
+    @just --list 
 
 # Run the dev checks in one go: lint, format check, type check, docs lint, justfile format
 dev: dev-lint dev-format-check dev-types dev-docs dev-stray justfile-check
