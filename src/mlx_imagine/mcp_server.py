@@ -21,7 +21,7 @@ MAX_WAIT = 55
 # A preview is a JPEG. A full PNG can be 2 MB or more, and an MCP client can refuse a result of that size (the Python
 # client allows 1 MiB for one event). The steps are (longest side, quality), tried in order until the base64 text
 # of all images of one result fits RESPONSE_BUDGET characters.
-PREVIEW_STEPS = ((1024, 85), (1024, 70), (768, 70), (768, 55), (512, 55), (384, 45))
+PREVIEW_STEPS = ((1024, 85), (1024, 70), (768, 70), (768, 55), (512, 55), (384, 45), (256, 40))
 RESPONSE_BUDGET = 700_000
 READ_ONLY = {"read_only_hint": True, "open_world_hint": False}
 DESTRUCTIVE = {"destructive_hint": True, "open_world_hint": False}
@@ -29,9 +29,9 @@ DESTRUCTIVE = {"destructive_hint": True, "open_world_hint": False}
 _PY_TYPES: dict[str, type] = {"string": str, "integer": int, "number": float, "boolean": bool}
 
 
-def jpeg_preview(source: Any, budget: int) -> bytes:
-    """A JPEG of the image, as large as the budget (base64 characters) allows. `source` is a path or PNG bytes.
-    A transparent area is drawn on white, so the preview does not show the hidden colors."""
+def jpeg_preview(source: Any, budget: int) -> bytes | None:
+    """A JPEG of the image, as large as the budget (base64 characters) allows, or None when no step fits. `source`
+    is a path or PNG bytes. A transparent area is drawn on white, so the preview does not show the hidden colors."""
     import io
 
     import PIL.Image
@@ -41,7 +41,6 @@ def jpeg_preview(source: Any, budget: int) -> bytes:
     flat = PIL.Image.new("RGBA", picture.size, (255, 255, 255, 255))
     flat.alpha_composite(picture)
     rgb = flat.convert("RGB")
-    data = b""
     for side, quality in PREVIEW_STEPS:
         candidate = rgb.copy()
         candidate.thumbnail((side, side))
@@ -49,8 +48,8 @@ def jpeg_preview(source: Any, budget: int) -> bytes:
         candidate.save(buffer, "JPEG", quality=quality)
         data = buffer.getvalue()
         if len(data) * 4 // 3 <= budget:
-            break
-    return data
+            return data
+    return None
 
 
 def _annotations(**hints: Any) -> Any:
@@ -220,7 +219,8 @@ def build_mcp(engine: Engine) -> Any:
         White in the mask is the area that the model draws again. Both arguments are upload IDs or paths inside
         the input directory. It needs no model."""
         png = call(engine.preview_mask, image_path, mask_image)
-        return [Image(data=jpeg_preview(png, RESPONSE_BUDGET), format="jpeg")]
+        data = jpeg_preview(png, RESPONSE_BUDGET)
+        return [Image(data=data, format="jpeg")] if data else ["The preview is too large to send."]
 
     # -- LoRA files -------------------------------------------------------------------------------------------
 

@@ -225,3 +225,4 @@ def test_a_preview_fits_the_budget_and_draws_transparency_on_white() -> None:
     hidden.save(out, "PNG")
     pixel = PIL.Image.open(io.BytesIO(jpeg_preview(out.getvalue(), RESPONSE_BUDGET))).getpixel((10, 10))
     assert min(pixel) > 240
+    assert jpeg_preview(buffer.getvalue(), 1_000) is None  # no step fits: no preview, not an oversized one
