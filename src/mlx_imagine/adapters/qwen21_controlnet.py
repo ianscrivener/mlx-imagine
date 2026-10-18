@@ -32,6 +32,14 @@ def build_parser() -> CommandLineParser:
     # The load check needs a request that validate() accepts: a control image, or an image and a mask.
     setattr(parser, "placeholder_options", ["--controlnet-image-path", "x.png"])
     setattr(parser, "server_modes", ("controlnet", "inpaint"))
+    setattr(
+        parser,
+        "server_notes",
+        "This model needs a control image (controlnet_image_path), or an image and a mask (image_path and "
+        "mask_image) to inpaint. Make the control image first: the server does not make canny or depth images. "
+        "Send each image with upload_image and use its upload_id. White in the mask is drawn again. "
+        "Call preview_mask to check the mask. The first load takes long and uses much memory.",
+    )
     return parser
 
 

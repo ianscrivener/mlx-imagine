@@ -87,6 +87,27 @@ BLOCKED_OPTIONS = frozenset(
     }
 )
 
+# What a client reads in the schema for an option that names an image. These replace the help text of mflux, which
+# talks about local paths. A client sends an upload ID or a path inside the input directory.
+_WHERE = "An upload ID (from upload_image or POST /v1/uploads), or a path inside the input directory."
+IMAGE_DESCRIPTIONS = {
+    "image_path": f"The input image. {_WHERE}",
+    "image_paths": f"The input images. Each one: {_WHERE.lower()}",
+    "controlnet_image_path": (
+        "A control image that is ready to use: canny edges, a depth map, a pose image, and so on. "
+        f"The server does not make it. {_WHERE}"
+    ),
+    "mask_image": (
+        "The mask for image_path, with the same size. White is drawn again, black stays. "
+        f"Check it with preview_mask. {_WHERE}"
+    ),
+    "control": (
+        "A list of controls, each 'type:image[:strength]'. The type is canny, depth, hed, mlsd or pose. "
+        "The image is a ready control image of that type. The server does not make it. Give an upload ID, or a "
+        "path inside the input directory. The strength is 0.65 to 1.0. Example: 'canny:upl_1a2b3c:0.8'."
+    ),
+}
+
 # Options that name an input image. Each value must resolve inside the input directory.
 IMAGE_OPTIONS = frozenset({"image_path", "image_paths", "controlnet_image_path", "mask_image"})
 
@@ -233,12 +254,14 @@ def schemas(spec: CommandSpec) -> dict[str, Any]:
         name = action.dest
         if name in BLOCKED_OPTIONS or record.get("status") in {"ignored", "rejected"}:
             continue
-        schema = dict(_JSON_TYPES.get(record["type"], {"type": "string"}))
+        schema: dict[str, Any] = dict(_JSON_TYPES.get(record["type"], {"type": "string"}))
         if "choices" in record:
             schema = {"enum": [_choice(choice, record["type"]) for choice in record["choices"]]}
         if record.get("nargs") in {"+", "*"} or (isinstance(action, argparse._AppendAction) and action.nargs is None):
             schema = {"type": "array", "items": schema}
-        if record.get("help"):
+        if name in IMAGE_DESCRIPTIONS:
+            schema["description"] = IMAGE_DESCRIPTIONS[name]
+        elif record.get("help"):
             schema["description"] = record["help"].replace("%%", "%")
         default = record.get("parser_default")
         if default is not None and name != "seed":

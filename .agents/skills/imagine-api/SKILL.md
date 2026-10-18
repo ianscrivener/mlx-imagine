@@ -39,6 +39,17 @@ description: Use a running mlx-imagine server to make images. Covers the models,
 1. Upload the image: `POST /v1/uploads` (multipart field `file`). It returns `upload_id`.
 2. Send `image_path: "<upload_id>"` and `image_strength` in the generate request. A higher `image_strength` keeps more of the input image.
 
+## ControlNet and inpainting
+
+Only a model with `capabilities.modes` that has `controlnet` or `inpaint` can do this. Check `list_registry_models` (`modes`). The models are `qwen-image-2.1-controlnet-union` (and its Turbo version) and `z-image-turbo-controlnet-union-2.1`.
+
+1. Make the control image yourself. The server does not make canny edges, a depth map or a pose image. The image must be ready to use.
+2. Give each image to the server: `POST /v1/uploads` (MCP: `upload_image` with base64 text). Use the returned `upload_id`.
+3. Qwen-Image 2.1: send `controlnet_image_path` (the control image), or send `image_path` and `mask_image` to inpaint. White in the mask is drawn again. Black stays.
+4. Z-Image: send `control`, a list of `"type:upload_id:strength"`, for example `["canny:upl_1a2b3c:0.8"]`. The type is `canny`, `depth`, `hed`, `mlsd` or `pose`. The strength is 0.65 to 1.0.
+5. Before a long inpaint, check the mask: `POST /v1/masks/preview` (MCP: `preview_mask`). It draws the white area in red and needs no model.
+6. The first load takes long and uses much memory (the base model and the ControlNet). A generate takes minutes: follow the job.
+
 ## LoRA files
 
 1. List the LoRA files: `GET /v1/loras` (MCP: `list_loras`). A name is a path inside the LoRA directory.

@@ -124,3 +124,53 @@ def test_the_mask_preview_tool_is_read_only_and_returns_an_image(engine: Engine)
     result = asyncio.run(build_mcp(engine).call_tool("preview_mask", {"image_path": "a.png", "mask_image": "m.png"}))
     content = result.content if hasattr(result, "content") else result[0]
     assert content[0].type == "image" and content[0].mime_type == "image/png"
+
+
+def _png_base64() -> str:
+    import base64
+    import io
+
+    import PIL.Image
+
+    buffer = io.BytesIO()
+    PIL.Image.new("RGB", (16, 16), (200, 10, 10)).save(buffer, "PNG")
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
+def test_upload_image_saves_the_image_and_returns_an_id_that_a_request_can_use(engine: Engine) -> None:
+    """Bug: an MCP client has no way to give the server an image, so ControlNet and inpaint cannot work."""
+    mcp = build_mcp(engine)
+    stored = _call(mcp, "upload_image", {"data": _png_base64(), "subdir": "refs"})
+    assert stored["upload_id"].startswith("upl_") and (stored["width"], stored["height"]) == (16, 16)
+    assert engine.resolve_input(stored["upload_id"]).parent == (engine.input_dir / "refs").resolve()
+
+
+@pytest.mark.parametrize(
+    ("data", "code"),
+    [("not base64 !!", "invalid_request"), ("aGVsbG8=", "invalid_request"), ("A" * 1_400_000, "upload_too_large")],
+)
+def test_upload_image_refuses_bad_data(engine: Engine, data: str, code: str) -> None:
+    """Bug: text that is not an image, or an upload above max_upload_mb, is saved in the input directory."""
+    engine.settings.max_upload_mb = 1
+    with pytest.raises(Exception, match=code):
+        asyncio.run(build_mcp(engine).call_tool("upload_image", {"data": data}))
+    assert not list(engine.input_dir.glob("upl_*"))
+
+
+def test_a_client_can_learn_the_controlnet_workflow_from_the_mcp_alone(settings) -> None:
+    """Bug: an MCP client without a skill does not know how to give an image, that it must make the control image,
+    or that white in a mask is drawn again."""
+    from mlx_imagine.engine import Engine as RealEngine
+
+    mcp = build_mcp(RealEngine(settings))
+    assert "upload_image" in mcp.instructions and "preview_mask" in mcp.instructions
+    tools = _tools(RealEngine(settings))
+    qwen = tools["generate_qwen_image_2_1_controlnet_union"]
+    assert "control image" in qwen.description and "upload_image" in qwen.description
+    properties = qwen.input_schema["properties"]
+    assert "White is drawn again" in properties["mask_image"]["description"]
+    assert "does not make it" in properties["controlnet_image_path"]["description"]
+    assert "upload_image" in properties["image_path"]["description"]
+    zimage = tools["generate_z_image_turbo_controlnet_union_2_1"]
+    assert "canny" in zimage.input_schema["properties"]["control"]["description"]
+    assert "upload_image" in zimage.description

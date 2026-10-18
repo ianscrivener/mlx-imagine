@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 from pydantic import Field
 
 from .engine import Engine
-from .errors import ApiError
+from .errors import ApiError, invalid_request
 from .jobs import ENDED, SUCCEEDED, Job
 from .options import schemas
 
@@ -45,7 +45,11 @@ def build_mcp(engine: Engine) -> Any:
         instructions=(
             "Generate images with mflux on this machine. Call list_registry_models, then load_model, then the "
             "generate tool of the loaded model. One job runs at a time. Jobs that take long return a job ID: "
-            "call get_job to read the result."
+            "call get_job to read the result. To give the server an image, call upload_image and use the "
+            "upload_id as image_path, mask_image or in a control. A model with the mode controlnet or inpaint "
+            "needs a control image, or an image and a mask. You make the control image (canny, depth, pose): "
+            "the server does not. White in a mask is drawn again: check the mask with preview_mask. Read the "
+            "description of the generate tool of the model."
         ),
     )
 
@@ -157,6 +161,24 @@ def build_mcp(engine: Engine) -> Any:
         """Delete a model from the Hugging Face cache (name is the repo ID) or from the mflux model directory
         (name is the folder name). Set confirm to true."""
         return call(engine.delete_model, store, name, confirm)
+
+    # -- images in -------------------------------------------------------------------------------------------
+
+    @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=False))
+    def upload_image(data: str, subdir: str | None = None) -> dict[str, Any]:
+        """Give the server an image: PNG, JPEG or WebP as base64 text, without a data: prefix. Returns the
+        upload_id. Use it as image_path, mask_image or controlnet_image_path, or in a control. `subdir` is a
+        folder of the input directory."""
+        import base64
+        import binascii
+
+        try:
+            raw = base64.b64decode(data, validate=True)
+        except (binascii.Error, ValueError):
+            raise ToolError(
+                _error_text(invalid_request("'data' must be base64 text, without a data: prefix."))
+            ) from None
+        return call(engine.store_upload, raw, None, subdir)
 
     # -- mask preview -----------------------------------------------------------------------------------------
 
@@ -289,6 +311,7 @@ def _add_generate_tool(
 ) -> None:
     generate_schema = schemas(entry.spec)["generate_schema"]
     model_name = entry.name
+    notes = getattr(entry.spec.build_parser(), "server_notes", "")
 
     async def generate(**kwargs: Any) -> list[Any]:
         ctx = kwargs.pop("ctx", None)
@@ -311,6 +334,7 @@ def _add_generate_tool(
         description=(
             f"Generate images with {model_name}. Loads the model first if it is not the loaded model. "
             "Waits up to wait_seconds, then returns the job and the images, or the job ID to read with get_job."
+            + (f" {notes}" if notes else "")
         ),
         annotations=_annotations(destructive_hint=False, open_world_hint=False),
         structured_output=False,

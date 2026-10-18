@@ -514,6 +514,10 @@ ControlNet is only available for a model that supports it. The server runs these
 | `qwen-image-2.1-controlnet-union`, `qwen-image-2.1-turbo-controlnet-union` | `controlnet_image_path` (canny, depth, pose, HED, lineart, MLSD, scribble or grayscale), or `image_path` with `mask_image` | Alibaba-PAI Fun ControlNet Union. With `image_path` and `mask_image` the model inpaints: white in the mask is drawn again, black stays. `controlnet_strength` (default `1.0`) and `output_resolution` (default `1024`) are options. The Turbo model refuses `guidance` other than `1`. |
 | `z-image-turbo-controlnet-union-2.1` | `control`: one or more `type:path[:strength]` | `type` is `canny`, `depth`, `hed`, `mlsd` or `pose`. Z-Image has no inpaint mode. |
 
+The server does not make a control image. The client makes the canny edges, the depth map or the pose image, and sends it as an upload (5.3). An MCP client uses the tool `upload_image`: it takes the image as base64 text and an optional `subdir`, and returns the same answer as `POST /v1/uploads`. It follows `image_directories.max_upload_mb`.
+
+The MCP server tells a client about this in its `instructions` and in the description of each ControlNet generate tool. The schema of each image option says that it takes an upload ID or a path inside `input_dir`.
+
 `POST /v1/masks/preview` (MCP: `preview_mask`) takes `{"image_path", "mask_image"}` and returns a PNG of the image with the white area of the mask drawn in red. It needs no model and makes no job. Use it to check a mask before a long generate request.
 
 A model with a ControlNet loads more weights. On a 36 GB Mac, the Qwen model with its ControlNet used about 8 GB of swap during the load. This was true also for a quantized saved model. Close other programs first.
@@ -682,6 +686,7 @@ Each tool calls the same server code as the REST endpoint.
 | `save_model` | `POST /v1/models/mflux/saves` | |
 | `set_saved_model_base` | `PATCH /v1/models/mflux/mflux_dir/{name}` | |
 | `delete_model` | `DELETE /v1/models/mflux/{store}/{name}` | destructive |
+| `upload_image` | `POST /v1/uploads` | |
 | `preview_mask` | `POST /v1/masks/preview` | read-only |
 | `list_loras` | `GET /v1/loras` | read-only |
 | `download_lora` | `POST /v1/loras/downloads` | |

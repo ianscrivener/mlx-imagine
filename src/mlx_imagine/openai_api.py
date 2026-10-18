@@ -136,7 +136,7 @@ def register(app: FastAPI, engine: Engine) -> None:
         response_format: str | None = Form(None),
         output_subdir: str | None = Form(None),
     ) -> dict[str, Any]:
-        from .api import UPLOAD_TYPES, _store_upload
+        from .api import UPLOAD_TYPES
 
         fmt = _response_format(response_format)
         suffix = UPLOAD_TYPES.get(image.content_type or "")
@@ -146,7 +146,7 @@ def register(app: FastAPI, engine: Engine) -> None:
         data = await image.read(limit + 1)
         if len(data) > limit:
             raise ApiError("upload_too_large", 413, f"The upload is larger than {engine.settings.max_upload_mb} MB.")
-        stored = await asyncio.to_thread(_store_upload, engine, data, suffix)
+        stored = await asyncio.to_thread(engine.store_upload, data, suffix)
         native = build_request({"prompt": prompt, "n": n, "size": size, "output_subdir": output_subdir})
         _ensure_model(engine, model)
         modes = engine.target.entry.modes if engine.target else ()

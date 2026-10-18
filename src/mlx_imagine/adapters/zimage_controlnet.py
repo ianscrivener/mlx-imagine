@@ -30,6 +30,13 @@ def build_parser() -> CommandLineParser:
     # The load check needs a request that validate() accepts.
     setattr(parser, "placeholder_options", ["--control", "canny:x.png"])
     setattr(parser, "server_modes", ("controlnet",))
+    setattr(
+        parser,
+        "server_notes",
+        "This model needs at least one control: 'type:upload_id[:strength]' with the type canny, depth, hed, mlsd "
+        "or pose. Make the control image first: the server does not make canny or depth images. Send each image "
+        "with upload_image and use its upload_id.",
+    )
     return parser
 
 

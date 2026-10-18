@@ -1,10 +1,8 @@
 """The REST API (docs/api.md). Each route checks the request, then calls the engine."""
 
 import asyncio
-import io
 import json
 import queue
-import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, Literal
@@ -14,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.security import HTTPBearer
 
-from . import __version__, paths
+from . import __version__
 from .engine import Engine
 from .errors import ApiError, invalid_request
 from .middleware import AuthMiddleware, BodyLimitMiddleware
@@ -240,7 +238,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         data = await file.read(limit + 1)
         if len(data) > limit:
             raise ApiError("upload_too_large", 413, f"The upload is larger than {engine.settings.max_upload_mb} MB.")
-        return await asyncio.to_thread(_store_upload, engine, data, suffix, subdir)
+        return await asyncio.to_thread(engine.store_upload, data, suffix, subdir)
 
     @app.post("/v1/masks/preview")
     async def preview_mask(
@@ -281,27 +279,6 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
     if mcp_app is not None:
         app.mount("/", mcp_app)
     return app
-
-
-def _store_upload(engine: Engine, data: bytes, suffix: str, subdir: str | None = None) -> dict[str, Any]:
-    import PIL.Image
-    from mflux.utils.exif_orientation import oriented_size
-
-    try:
-        with PIL.Image.open(io.BytesIO(data)) as picture:
-            picture.verify()
-        with PIL.Image.open(io.BytesIO(data)) as picture:
-            picture.load()
-    except Exception:  # noqa: BLE001 -- any decode failure means the file is not an image
-        raise invalid_request("The upload is not a readable image.") from None
-    upload_id = f"upl_{secrets.token_hex(6)}"
-    input_dir = engine.input_dir if subdir is None else paths.subdir(engine.input_dir, subdir)
-    input_dir.mkdir(parents=True, exist_ok=True)
-    path = input_dir / f"{upload_id}{suffix}"
-    path.write_bytes(data)
-    # mflux turns an image by its EXIF orientation before it encodes it, so report the size after the turn.
-    width, height = oriented_size(path)
-    return {"upload_id": upload_id, "path": str(path), "width": width, "height": height}
 
 
 async def _event_stream(engine: Engine, job: Any) -> AsyncIterator[bytes]:

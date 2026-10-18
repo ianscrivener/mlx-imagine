@@ -634,6 +634,42 @@ class Engine:
             raise not_found(f"The input image {value!r} does not exist.", path=value)
         return path
 
+    # -- uploads (stored in the input directory) ------------------------------------------------------------------
+
+    IMAGE_SUFFIXES = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}
+
+    def store_upload(self, data: bytes, suffix: str | None = None, subdir_name: str | None = None) -> dict[str, Any]:
+        """Save an image in the input directory (or a folder of it) and return its upload ID. `suffix` is from the
+        content type of a REST upload. Without it, the suffix comes from the image format."""
+        import io
+        import secrets
+
+        import PIL.Image
+        from mflux.utils.exif_orientation import oriented_size
+
+        limit = self.settings.max_upload_mb * 1000**2
+        if len(data) > limit:
+            raise ApiError("upload_too_large", 413, f"The upload is larger than {self.settings.max_upload_mb} MB.")
+        try:
+            with PIL.Image.open(io.BytesIO(data)) as picture:
+                picture_format = picture.format
+                picture.verify()
+            with PIL.Image.open(io.BytesIO(data)) as picture:
+                picture.load()
+        except Exception:  # noqa: BLE001 -- any decode failure means the file is not an image
+            raise invalid_request("The upload is not a readable image.") from None
+        suffix = suffix or self.IMAGE_SUFFIXES.get(picture_format or "")
+        if suffix is None:
+            raise invalid_request("Upload a PNG, JPEG or WebP image.", format=picture_format)
+        upload_id = f"upl_{secrets.token_hex(6)}"
+        input_dir = self.input_dir if subdir_name is None else subdir(self.input_dir, subdir_name)
+        input_dir.mkdir(parents=True, exist_ok=True)
+        path = input_dir / f"{upload_id}{suffix}"
+        path.write_bytes(data)
+        # mflux turns an image by its EXIF orientation before it encodes it, so report the size after the turn.
+        width, height = oriented_size(path)
+        return {"upload_id": upload_id, "path": str(path), "width": width, "height": height}
+
     # -- mask preview ---------------------------------------------------------------------------------------------
 
     def preview_mask(self, image_path: str, mask_image: str) -> bytes:

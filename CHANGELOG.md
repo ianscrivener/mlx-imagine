@@ -12,6 +12,7 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Added
 
+- The MCP tool `upload_image` (base64 in, upload ID out). A client now learns three things from the MCP alone. It learns how to give images. It learns how to make a control image. It learns what the mask colors mean. The text is in the MCP `instructions`, the description of each ControlNet generate tool, and the schema of each image option.
 - ControlNet and inpainting, for the models that support them. The adapter for Qwen-Image 2.1 with the Fun ControlNet Union takes a control image, or an image and a mask to inpaint. The adapter for Z-Image Turbo with the Fun ControlNet Union 2.1 takes `control` specs. The options `controlnet_image_path`, `mask_image` and `control` follow the input directory rules.
 - `POST /v1/masks/preview` and the MCP tool `preview_mask` draw a mask on an image, with no model.
 - The real-weight steps `inpaint` and `control`. The watchdog reads `MAX_SWAP_GROWTH_MB`.
