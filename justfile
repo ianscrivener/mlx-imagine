@@ -107,7 +107,7 @@ mac-service action config=config:
 
 # Show the health and state of a running server
 serve-status port="8765":
-    @curl -sf http://127.0.0.1:{{ port }}/v1/server | {{ python }} -m json.tool || echo "No server at port {{ port }}."
+    @curl -sf http://127.0.0.1:{{ port }}/v8/server | {{ python }} -m json.tool || echo "No server at port {{ port }}."
 
 # Run all offline tests (fake models, no weights)
 test *args:

@@ -24,7 +24,7 @@ def client(engine: Engine) -> Iterator[TestClient]:
 def _wait(client: TestClient, job_id: str) -> dict[str, Any]:
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        job = client.get(f"/v1/jobs/{job_id}").json()
+        job = client.get(f"/v8/jobs/{job_id}").json()
         if job["state"] in {"succeeded", "failed", "cancelled"}:
             return job
         time.sleep(0.02)
@@ -32,7 +32,7 @@ def _wait(client: TestClient, job_id: str) -> dict[str, Any]:
 
 
 def _load(client: TestClient) -> None:
-    _wait(client, client.post("/v1/model/load", json={"model": "z-image-turbo"}).json()["id"])
+    _wait(client, client.put("/v8/engine/model", json={"model": "z-image-turbo"}).json()["id"])
 
 
 def _png() -> bytes:
@@ -55,7 +55,7 @@ def test_the_images_go_into_the_output_subfolder(engine: Engine, client: TestCli
     """Bug: output_subdir is ignored, or the server makes the folder outside the output directory."""
     _load(client)
     response = client.post(
-        "/v1/generate", json={"prompt": "a cat", "seed": [3], "steps": 1, "output_subdir": "cats/2026"}
+        "/v8/generate", json={"prompt": "a cat", "seed": [3], "steps": 1, "output_subdir": "cats/2026"}
     )
     assert response.status_code == 202, response.text
     job = _wait(client, response.json()["id"])
@@ -69,14 +69,14 @@ def test_the_images_go_into_the_output_subfolder(engine: Engine, client: TestCli
 def test_a_bad_output_subfolder_fails_before_the_job_enters_the_queue(client: TestClient, name: str) -> None:
     """Bug: a request that waits in the queue fails later for a name the server can see at once."""
     _load(client)
-    response = client.post("/v1/generate", json={"prompt": "a cat", "output_subdir": name})
+    response = client.post("/v8/generate", json={"prompt": "a cat", "output_subdir": name})
     assert response.status_code in {400, 403}, response.text
-    assert client.get("/v1/jobs").json()["jobs"][0]["type"] == "load"
+    assert client.get("/v8/jobs").json()["jobs"][0]["type"] == "load"
 
 
 def test_an_upload_goes_into_the_input_subfolder_and_its_id_still_works(engine: Engine, client: TestClient) -> None:
     """Bug: the upload ID is not found when the upload is in a subfolder."""
-    response = client.post("/v1/uploads", params={"subdir": "refs"}, files={"file": ("a.png", _png(), "image/png")})
+    response = client.post("/v8/uploads", params={"subdir": "refs"}, files={"file": ("a.png", _png(), "image/png")})
     assert response.status_code == 201, response.text
     assert Path(response.json()["path"]).parent == (engine.input_dir / "refs").resolve()
     assert engine.resolve_input(response.json()["upload_id"]).is_file()
@@ -92,5 +92,5 @@ def test_input_subdir_is_the_base_of_relative_image_paths(engine: Engine, client
         engine.resolve_input("../b.png", engine.input_dir / "refs")
     assert getattr(error.value, "status", None) == 403
     _load(client)
-    missing = client.post("/v1/generate", json={"prompt": "x", "input_subdir": "nope"})
+    missing = client.post("/v8/generate", json={"prompt": "x", "input_subdir": "nope"})
     assert missing.status_code == 404

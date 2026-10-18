@@ -25,7 +25,7 @@ The most valuable things to take from mfluxible are not its features. They are t
 | LoRA | Bakes LoRAs in at load. | High (already in stage 2) | Copy the bake rules when LoRA arrives. |
 | More model families | 15 checkpoints, FLUX.1 and FLUX.2 Klein included. It calls the mflux model classes directly. | High, but it bypasses the command steps | Keep our rule: use only the command steps. mfluxible's `models.py` is a good list of the per-model differences to check when mflux adds command steps. |
 | Basic auth and a proxy example | In-app Basic auth, plus `Caddyfile.example` with a bearer token. | Low. We have a bearer token. | Copy the startup warning and the proxy example only. |
-| `/health` lists capabilities | `default_steps`, `supports_guidance`, `default_guidance`, `supports_negative_prompt`, `supports_mask`. Clients read it to choose defaults. | Medium | Add these to `GET /v1/model`. Our schema route has part of this. |
+| `/health` lists capabilities | `default_steps`, `supports_guidance`, `default_guidance`, `supports_negative_prompt`, `supports_mask`. Clients read it to choose defaults. | Medium | Add these to `GET /v8/engine/model`. Our schema route has part of this. |
 
 ## 2. Problems in mlx-imagine that mfluxible already found
 

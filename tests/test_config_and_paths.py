@@ -117,7 +117,7 @@ def test_the_startup_log_names_the_services_and_warns_when_no_token_is_on(caplog
     from mlx_imagine.cli import _log_startup
 
     _log_startup(config.Settings(swagger_enable=False))
-    assert "REST API http://127.0.0.1:8765/v1" in caplog.text and "Swagger" not in caplog.text
+    assert "REST API http://127.0.0.1:8765/v8" in caplog.text and "Swagger" not in caplog.text
     assert "No API token" in caplog.text
     caplog.clear()
     _log_startup(config.Settings(require_api_token=True, api_token="x"))

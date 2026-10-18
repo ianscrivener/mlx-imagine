@@ -57,7 +57,7 @@ def test_uninstall_boots_out_and_deletes_the_plist(launchctl, tmp_path) -> None:
 
 def test_status_reads_launchctl_and_health(launchctl, tmp_path) -> None:
     """Bug: status reports the server as running when only the plist exists."""
-    status = service.status("http://127.0.0.1:8765/v1/health", home=tmp_path)
+    status = service.status("http://127.0.0.1:8765/v8/health", home=tmp_path)
     assert status["state"] == "running" and status["pid"] == "42" and status["healthy"] is True
 
 
@@ -97,9 +97,9 @@ def test_status_shows_the_server_that_holds_the_lock(launchctl, tmp_path) -> Non
     process that blocks a second start."""
     from mlx_imagine.lock import ServerLock, lock_path
 
-    assert service.status("http://127.0.0.1:1/v1/health", home=tmp_path)["lock_owner"] is None
+    assert service.status("http://127.0.0.1:1/v8/health", home=tmp_path)["lock_owner"] is None
     held = ServerLock(lock_path(tmp_path))
     held.acquire("http://127.0.0.1:8765")
-    owner = service.status("http://127.0.0.1:1/v1/health", home=tmp_path)["lock_owner"]
+    owner = service.status("http://127.0.0.1:1/v8/health", home=tmp_path)["lock_owner"]
     held.release()
     assert owner["address"] == "http://127.0.0.1:8765" and isinstance(owner["pid"], int)

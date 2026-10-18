@@ -107,7 +107,7 @@ def _log_startup(settings: config.Settings) -> None:
     services = [
         f"{name} {base}{path}"
         for name, enabled, path in (
-            ("REST API", settings.api_enable, "/v1"),
+            ("REST API", settings.api_enable, "/v8"),
             ("MCP", settings.mcp_enable, "/mcp"),
             ("Swagger", settings.swagger_enable, "/docs"),
         )
@@ -129,7 +129,7 @@ def _mcp_stdio(settings: config.Settings) -> None:
     url = running_address() or f"http://{settings.host}:{settings.port}"
     if not settings.mcp_enable:
         sys.exit("mlx-imagine: services.mcp_enable is false in the config. Set it to true and restart the server.")
-    if not _healthy(f"{url}/v1/health"):
+    if not _healthy(f"{url}/v8/health"):
         sys.exit(
             f"mlx-imagine: no server runs at {url}. Start it with `mlx-imagine service start` "
             "(recommended) or `mlx-imagine serve`."
@@ -154,7 +154,7 @@ def _service(args: argparse.Namespace, settings: config.Settings, config_file: P
                 result = getattr(service, args.service_command)(config_file)
             print(f"The server is {result}.")
         else:
-            print(json.dumps(service.status(f"http://{settings.host}:{settings.port}/v1/health"), indent=2))
+            print(json.dumps(service.status(f"http://{settings.host}:{settings.port}/v8/health"), indent=2))
     except service.ServiceError as exc:
         sys.exit(f"mlx-imagine: {exc}")
 

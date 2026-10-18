@@ -24,7 +24,7 @@ def call(method: str, path: str, body: dict | None = None) -> dict:
 
 def finish(job_id: str) -> dict:
     while True:
-        job = call("GET", f"/v1/jobs/{job_id}")
+        job = call("GET", f"/v8/jobs/{job_id}")
         if job["state"] in ("succeeded", "failed", "cancelled"):
             return job
         time.sleep(0.3)
@@ -35,19 +35,19 @@ def swap_mb() -> int:
     return int(float(used.split("used =")[1].split("M")[0]))
 
 
-loaded = finish(call("POST", "/v1/model/load", {"model": MODEL})["id"])
+loaded = finish(call("PUT", "/v8/engine/model", {"model": MODEL})["id"])
 if loaded["state"] != "succeeded":
     sys.exit(f"FAIL: the load job {loaded['state']}: {loaded.get('error')}")
-print(f"load {loaded['state']} cache_limit={call('GET', '/v1/server')['memory']['mlx_cache_limit_gb']} GB", flush=True)
+print(f"load {loaded['state']} cache_limit={call('GET', '/v8/server')['memory']['mlx_cache_limit_gb']} GB", flush=True)
 times = []
 for index in range(JOBS):
     body = {"prompt": PROMPTS[index % len(PROMPTS)], "seed": [100 + index], "width": 512, "height": 512, "steps": 9}
     started = time.monotonic()
-    job = finish(call("POST", "/v1/generate", body)["id"])
+    job = finish(call("POST", "/v8/generate", body)["id"])
     seconds = time.monotonic() - started
     if job["state"] != "succeeded":
         sys.exit(f"FAIL: job {index + 1} {job['state']}: {job.get('error')}")
-    memory = call("GET", "/v1/server")["memory"]
+    memory = call("GET", "/v8/server")["memory"]
     times.append(seconds)
     print(
         f"job {index + 1:2d} {job['state']} {seconds:5.1f}s cache={memory['mlx_cache_gb']}GB "

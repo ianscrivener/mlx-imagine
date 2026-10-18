@@ -6,7 +6,7 @@ set -o pipefail
 LIMIT=$1; MODEL=$2; JOBS=$3; CONFIG=${4:a}
 HERE=${0:a:h}; ROOT=${HERE:h:h}; LOGDIR=$ROOT/.real-logs; LOG=$LOGDIR/cache-$LIMIT.log; U=http://127.0.0.1:8765
 mkdir -p $LOGDIR; : > $LOG
-if curl -sf $U/v1/health >/dev/null; then echo "A server already runs at $U. Stop it first."; exit 1; fi
+if curl -sf $U/v8/health >/dev/null; then echo "A server already runs at $U. Stop it first."; exit 1; fi
 TMPCONFIG=$LOGDIR/config-cache-$LIMIT.yaml
 $ROOT/.venv/bin/python - "$CONFIG" "$TMPCONFIG" "$LIMIT" <<'PY'
 import sys, yaml
@@ -21,7 +21,7 @@ env -u VIRTUAL_ENV .venv/bin/mlx-imagine --config $TMPCONFIG serve > $LOGDIR/ser
 SRV=$!
 zsh $HERE/watchdog.sh $SRV $LOG &
 WD=$!
-for i in {1..120}; do curl -sf $U/v1/health >/dev/null && break; sleep 1; done
+for i in {1..120}; do curl -sf $U/v8/health >/dev/null && break; sleep 1; done
 .venv/bin/python $HERE/cache_limit.py "$MODEL" "$JOBS" $U 2>&1 | tee -a $LOG
 RESULT=$?
 kill -TERM $SRV 2>/dev/null; wait $SRV 2>/dev/null; wait $WD 2>/dev/null

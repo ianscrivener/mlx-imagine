@@ -95,11 +95,11 @@ def test_the_mask_preview_draws_the_white_area_in_red(engine, tmp_path) -> None:
     mask.paste(255, (0, 0, 32, 64))  # the left half is drawn again
     mask.save(engine.input_dir / "m.png")
     with TestClient(create_app(engine)) as client:
-        response = client.post("/v1/masks/preview", json={"image_path": "a.png", "mask_image": "m.png"})
+        response = client.post("/v8/masks/preview", json={"image_path": "a.png", "mask_image": "m.png"})
         assert response.status_code == 200 and response.headers["content-type"] == "image/png"
         shown = PIL.Image.open(io.BytesIO(response.content))
         assert shown.getpixel((8, 8))[0] > 100 and shown.getpixel((56, 8)) == (0, 0, 255)
-        assert client.post("/v1/masks/preview", json={"image_path": "a.png"}).status_code == 400
+        assert client.post("/v8/masks/preview", json={"image_path": "a.png"}).status_code == 400
 
 
 def test_a_control_spec_resolves_its_path_inside_the_input_directory(tmp_path) -> None:

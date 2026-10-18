@@ -29,7 +29,7 @@ def _lora(engine: Engine, name: str, size: int = 10) -> Path:
 def _wait(client: TestClient, job_id: str) -> dict[str, Any]:
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        job = client.get(f"/v1/jobs/{job_id}").json()
+        job = client.get(f"/v8/jobs/{job_id}").json()
         if job["state"] in {"succeeded", "failed", "cancelled"}:
             return job
         time.sleep(0.02)
@@ -42,7 +42,7 @@ def test_the_list_shows_safetensors_files_and_skips_other_files(engine: Engine, 
     _lora(engine, "style/b.safetensors")
     _lora(engine, "notes.txt")
     _lora(engine, ".hidden/c.safetensors")
-    names = [item["name"] for item in client.get("/v1/loras").json()["loras"]]
+    names = [item["name"] for item in client.get("/v8/loras").json()["loras"]]
     assert names == ["a.safetensors", "style/b.safetensors"]
 
 
@@ -57,8 +57,8 @@ def test_a_name_outside_the_lora_directory_or_not_a_lora_is_refused(engine: Engi
 def test_a_load_with_loras_passes_the_paths_and_scales_to_the_command(engine: Engine, client: TestClient) -> None:
     """Bug: the loras of a load request do not reach the model, or the scale is lost."""
     path = _lora(engine, "style/b.safetensors")
-    response = client.post(
-        "/v1/model/load",
+    response = client.put(
+        "/v8/engine/model",
         json={
             "model": "z-image-turbo",
             "loras": ["style/b.safetensors", {"name": "style/b.safetensors", "scale": 0.5}],
@@ -70,7 +70,7 @@ def test_a_load_with_loras_passes_the_paths_and_scales_to_the_command(engine: En
 
     args = FakeModel.instances[-1].args
     assert args.lora_paths == [str(path.resolve())] * 2 and args.lora_scales == [1.0, 0.5]
-    assert client.get("/v1/model").json()["loras"] == [
+    assert client.get("/v8/engine/model").json()["loras"] == [
         {"name": "style/b.safetensors", "scale": 1.0},
         {"name": "style/b.safetensors", "scale": 0.5},
     ]
@@ -85,13 +85,13 @@ def test_a_bad_loras_field_is_refused_before_the_job_enters_the_queue(
 ) -> None:
     """Bug: a bad loras field fails inside the queue, or loads a model without the LoRA."""
     _lora(engine, "a.safetensors")
-    response = client.post("/v1/model/load", json={"model": "z-image-turbo", "loras": loras_value})
+    response = client.put("/v8/engine/model", json={"model": "z-image-turbo", "loras": loras_value})
     assert response.status_code in {400, 404}, response.text
 
 
 def test_the_lora_options_of_mflux_stay_blocked_and_point_to_loras(client: TestClient) -> None:
     """Bug: --lora reaches mflux, which resolves a Hugging Face name and downloads it."""
-    response = client.post("/v1/model/load", json={"model": "z-image-turbo", "lora_paths": ["owner/name"]})
+    response = client.put("/v8/engine/model", json={"model": "z-image-turbo", "lora_paths": ["owner/name"]})
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "option_blocked" and "loras" in response.json()["error"]["message"]
 
@@ -99,13 +99,13 @@ def test_the_lora_options_of_mflux_stay_blocked_and_point_to_loras(client: TestC
 def test_delete_needs_confirm_and_refuses_a_lora_in_use(engine: Engine, client: TestClient) -> None:
     """Bug: a delete without confirm removes the file, or removes a LoRA of the loaded model."""
     path = _lora(engine, "style/b.safetensors")
-    assert client.delete("/v1/loras/style/b.safetensors").json()["error"]["code"] == "confirm_required"
-    load = client.post("/v1/model/load", json={"model": "z-image-turbo", "loras": ["style/b.safetensors"]})
+    assert client.delete("/v8/loras/style/b.safetensors").json()["error"]["code"] == "confirm_required"
+    load = client.put("/v8/engine/model", json={"model": "z-image-turbo", "loras": ["style/b.safetensors"]})
     _wait(client, load.json()["id"])
-    in_use = client.delete("/v1/loras/style/b.safetensors", params={"confirm": True})
+    in_use = client.delete("/v8/loras/style/b.safetensors", params={"confirm": True})
     assert in_use.status_code == 409 and in_use.json()["error"]["code"] == "lora_in_use"
-    _wait(client, client.post("/v1/model/unload").json()["id"])
-    done = client.delete("/v1/loras/style/b.safetensors", params={"confirm": True})
+    _wait(client, client.delete("/v8/engine/model").json()["id"])
+    done = client.delete("/v8/loras/style/b.safetensors", params={"confirm": True})
     assert done.status_code == 200 and not path.exists() and not path.parent.exists()
 
 
@@ -123,13 +123,15 @@ def test_a_download_gets_one_file_into_a_folder_of_the_repository(
         return str(target.parent)
 
     monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot)
-    response = client.post("/v1/loras/downloads", json={"repo_id": "owner/name", "filename": "sub/style.safetensors"})
+    response = client.post(
+        "/v8/downloads", json={"kind": "lora", "repo_id": "owner/name", "filename": "sub/style.safetensors"}
+    )
     assert response.status_code == 202, response.text
     job = _wait(client, response.json()["id"])
     assert job["state"] == "succeeded", job["error"]
     assert job["result"]["name"] == "owner--name/sub/style.safetensors"
     assert calls[0]["allow_patterns"] == ["sub/style.safetensors"]
-    assert [item["name"] for item in client.get("/v1/loras").json()["loras"]] == ["owner--name/sub/style.safetensors"]
+    assert [item["name"] for item in client.get("/v8/loras").json()["loras"]] == ["owner--name/sub/style.safetensors"]
 
 
 @pytest.mark.parametrize(
@@ -147,13 +149,13 @@ def test_a_download_gets_one_file_into_a_folder_of_the_repository(
 )
 def test_a_download_with_a_bad_repository_or_file_is_refused(client: TestClient, body: dict[str, str]) -> None:
     """Bug: a repository ID or file name with a path part writes outside the LoRA directory."""
-    assert client.post("/v1/loras/downloads", json=body).status_code == 400
+    assert client.post("/v8/downloads", json={"kind": "lora", **body}).status_code == 400
 
 
 def test_a_download_needs_confirm_when_the_setting_asks_for_it(engine: Engine, client: TestClient) -> None:
     """Bug: require_model_confirmation does not apply to a LoRA download."""
     engine.settings.hf_require_model_confirmation = True
-    response = client.post("/v1/loras/downloads", json={"repo_id": "owner/name", "filename": "a.safetensors"})
+    response = client.post("/v8/downloads", json={"kind": "lora", "repo_id": "owner/name", "filename": "a.safetensors"})
     assert response.status_code == 409 and response.json()["error"]["code"] == "confirm_required"
 
 
@@ -163,9 +165,9 @@ def test_a_refused_lora_download_says_where_to_put_the_file_and_status_shows_the
     """Bug: an agent gets "allow_model_download is false" for a LoRA, with no way to continue, and learns about the
     block only from a refused call."""
     engine.settings.hf_allow_model_download = False
-    status = client.get("/v1/server").json()
+    status = client.get("/v8/server").json()
     assert status["permissions"]["model_download"] is False and status["lora_directory"] == str(engine.lora_dir)
-    response = client.post("/v1/loras/downloads", json={"repo_id": "owner/name", "filename": "a.safetensors"})
+    response = client.post("/v8/downloads", json={"kind": "lora", "repo_id": "owner/name", "filename": "a.safetensors"})
     message = response.json()["error"]["message"]
     assert response.status_code == 403 and "LoRA download" in message and str(engine.lora_dir) in message
-    assert client.get("/v1/loras").json()["directory"] == str(engine.lora_dir)
+    assert client.get("/v8/loras").json()["directory"] == str(engine.lora_dir)

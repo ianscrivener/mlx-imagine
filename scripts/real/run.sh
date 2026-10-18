@@ -7,14 +7,14 @@ set -o pipefail
 STEPS=$1; MODEL=$2; IMAGE=${3:a}; CONFIG=${4:a}
 HERE=${0:a:h}; ROOT=${HERE:h:h}; LOGDIR=$ROOT/.real-logs; LOG=$LOGDIR/suite.log; U=http://127.0.0.1:8765
 mkdir -p $LOGDIR; : > $LOG
-if curl -sf $U/v1/health >/dev/null; then echo "A server already runs at $U. Stop it first."; exit 1; fi
+if curl -sf $U/v8/health >/dev/null; then echo "A server already runs at $U. Stop it first."; exit 1; fi
 echo "memory before: $(memory_pressure | tail -1) | $(sysctl -n vm.swapusage)" | tee -a $LOG
 cd $ROOT
 env -u VIRTUAL_ENV .venv/bin/mlx-imagine --config $CONFIG serve > $LOGDIR/server.log 2>&1 &
 SRV=$!
 zsh $HERE/watchdog.sh $SRV $LOG &
 WD=$!
-for i in {1..120}; do curl -sf $U/v1/health >/dev/null && break; sleep 1; done
+for i in {1..120}; do curl -sf $U/v8/health >/dev/null && break; sleep 1; done
 .venv/bin/python $HERE/suite.py "$STEPS" "$MODEL" "$IMAGE" $U 2>&1 | tee -a $LOG
 SUITE=$?
 kill -TERM $SRV 2>/dev/null; wait $SRV 2>/dev/null; wait $WD 2>/dev/null

@@ -12,13 +12,15 @@ from .errors import ApiError
 Scope = dict[str, Any]
 Receive = Callable[[], Awaitable[dict[str, Any]]]
 Send = Callable[[dict[str, Any]], Awaitable[None]]
-PUBLIC_PATHS = frozenset({"/v1/health"})
+# /v8 is the native API. /v1 is the OpenAI-compatible API only.
+API_PREFIXES = ("/v8/", "/v1/")
+PUBLIC_PATHS = frozenset({"/v8/health"})
 # The Swagger page and its schema load in a browser, which cannot send the token header. The Authorize button of
 # the page sends it on each call.
 DOCS_PATHS = frozenset({"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"})
 MB = 1024 * 1024
 JSON_BODY_LIMIT = MB
-UPLOAD_PATHS = frozenset({"/v1/uploads", "/v1/images/edits"})
+UPLOAD_PATHS = frozenset({"/v8/uploads", "/v1/images/edits"})
 UPLOAD_OVERHEAD = MB  # the multipart boundary and the headers around the file
 
 
@@ -48,7 +50,7 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
         path = scope["path"]
-        if not self.api_enabled and path.startswith("/v1/") and path not in PUBLIC_PATHS:
+        if not self.api_enabled and path.startswith(API_PREFIXES) and path not in PUBLIC_PATHS:
             error = ApiError("api_disabled", 404, "The REST API is off: services.api_enable is false.")
             await send_error(scope, receive, send, error)
             return

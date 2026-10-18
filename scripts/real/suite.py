@@ -47,7 +47,7 @@ def api(method: str, path: str, body: Any = None) -> Any:
 def wait(job_id: str, until: Any = None, timeout: float = 900) -> dict:
     started = time.time()
     while time.time() - started < timeout:
-        job = api("GET", f"/v1/jobs/{job_id}")
+        job = api("GET", f"/v8/jobs/{job_id}")
         if until is not None and until(job):
             return job
         if job["state"] in ("succeeded", "failed", "cancelled"):
@@ -57,14 +57,15 @@ def wait(job_id: str, until: Any = None, timeout: float = 900) -> dict:
 
 
 def submit(path: str, body: Any) -> dict:
-    job = api("POST", path, body)
+    method = ("PUT" if body is not None else "DELETE") if path == "/v8/engine/model" else "POST"
+    job = api(method, path, body)
     if "id" not in job:
         raise RuntimeError(json.dumps(job))
     return wait(job["id"])
 
 
 def memory() -> dict:
-    return api("GET", "/v1/server")["memory"]
+    return api("GET", "/v8/server")["memory"]
 
 
 def report(name: str, ok: bool, detail: str) -> None:
@@ -77,7 +78,7 @@ def images(job: dict) -> list[dict]:
 
 def step_load() -> None:
     started = time.time()
-    job = submit("/v1/model/load", {"model": MODEL})
+    job = submit("/v8/engine/model", {"model": MODEL})
     used = memory()
     report(
         "load",
@@ -88,7 +89,7 @@ def step_load() -> None:
 
 def step_seeds() -> None:
     started = time.time()
-    job = submit("/v1/generate", {"prompt": "a red fox in fresh snow, photo", "seed": [1, 2], **SMALL})
+    job = submit("/v8/generate", {"prompt": "a red fox in fresh snow, photo", "seed": [1, 2], **SMALL})
     used = memory()
     names = [image["path"].split("/")[-1] for image in images(job)]
     detail = f"{time.time() - started:.1f}s {names} peak={used['mlx_peak_gb']} cache={used['mlx_cache_gb']}"
@@ -96,14 +97,14 @@ def step_seeds() -> None:
 
 
 def step_cancel() -> None:
-    job = api("POST", "/v1/generate", {"prompt": "a lighthouse at night, photo", "seed": [10, 11, 12], **SMALL})
+    job = api("POST", "/v8/generate", {"prompt": "a lighthouse at night, photo", "seed": [10, 11, 12], **SMALL})
 
     def second_image_started(current: dict) -> bool:
         progress = current.get("progress") or {}
         return progress.get("image_index", 0) >= 1 and progress.get("step", 0) >= 2
 
     wait(job["id"], until=second_image_started)
-    api("DELETE", f"/v1/jobs/{job['id']}")
+    api("DELETE", f"/v8/jobs/{job['id']}")
     job = wait(job["id"])
     ok = job["state"] == "cancelled" and len(images(job)) == 1
     report("cancel during image 2 of 3", ok, f"state={job['state']} images={len(images(job))}")
@@ -115,10 +116,10 @@ def step_img2img() -> None:
     with open(IMAGE, "rb") as file:
         body = head.encode() + file.read() + f"\r\n--{boundary}--\r\n".encode()
     content_type = {"content-type": f"multipart/form-data; boundary={boundary}"}
-    status, data, _ = call("POST", "/v1/uploads", raw=body, headers=content_type)
+    status, data, _ = call("POST", "/v8/uploads", raw=body, headers=content_type)
     upload = json.loads(data)
     request = {"prompt": "a watercolor painting", "image_path": upload["upload_id"], "image_strength": 0.3, "seed": [5]}
-    job = submit("/v1/generate", {**request, "steps": 9})
+    job = submit("/v8/generate", {**request, "steps": 9})
     sizes = [(image["width"], image["height"]) for image in images(job)]
     report(
         "img2img from upload",
@@ -160,12 +161,12 @@ def step_mcp() -> None:
 
 def step_lowram() -> None:
     started = time.time()
-    job = submit("/v1/model/load", {"model": MODEL, "low_ram": True})
+    job = submit("/v8/engine/model", {"model": MODEL, "low_ram": True})
     report("load low_ram", job["state"] == "succeeded", f"{time.time() - started:.1f}s err={job['error']}")
     for number in (1, 2):
         started = time.time()
-        job = submit("/v1/generate", {"prompt": "a cup of coffee on a wooden table, photo", "seed": [number], **SMALL})
-        model = api("GET", "/v1/model")
+        job = submit("/v8/generate", {"prompt": "a cup of coffee on a wooden table, photo", "seed": [number], **SMALL})
+        model = api("GET", "/v8/engine/model")
         used = memory()
         detail = f"{time.time() - started:.1f}s state={model and model['state']} peak={used['mlx_peak_gb']}"
         report(f"low_ram generate {number}", job["state"] == "succeeded", f"{detail} err={job['error']}")
@@ -173,7 +174,7 @@ def step_lowram() -> None:
 
 def step_save() -> None:
     started = time.time()
-    job = api("POST", "/v1/models/mflux/saves", {"model": SAVE_MODEL, "quantize": 8, "name": SAVE_NAME})
+    job = api("POST", "/v8/saves", {"model": SAVE_MODEL, "quantize": 8, "name": SAVE_NAME})
     if "id" not in job:
         report("save and quantize q8", False, json.dumps(job))
         return
@@ -184,12 +185,12 @@ def step_save() -> None:
         job["state"] == "succeeded",
         f"{time.time() - started:.0f}s peak={used['mlx_peak_gb']} err={job['error']}",
     )
-    deleted = api("DELETE", f"/v1/models/mflux/mflux_dir/{SAVE_NAME}?confirm=true")
+    deleted = api("DELETE", f"/v8/models/mflux_dir/{SAVE_NAME}?confirm=true")
     report("delete the saved test model", "freed_gb" in (deleted or {}), json.dumps(deleted))
 
 
 def step_unload() -> None:
-    job = submit("/v1/model/unload", None)
+    job = submit("/v8/engine/model", None)
     used = memory()
     ok = job["state"] == "succeeded" and used["mlx_active_gb"] < 0.5
     report("unload", ok, f"active={used['mlx_active_gb']} cache={used['mlx_cache_gb']}")
@@ -216,9 +217,9 @@ def step_cycles() -> None:
     active, rss = [], []
     for cycle in range(CYCLES):
         jobs = [
-            submit("/v1/model/load", {"model": MODEL}),
-            submit("/v1/generate", {"prompt": "a red fox in fresh snow, photo", "seed": [cycle], **SMALL}),
-            submit("/v1/model/unload", None),
+            submit("/v8/engine/model", {"model": MODEL}),
+            submit("/v8/generate", {"prompt": "a red fox in fresh snow, photo", "seed": [cycle], **SMALL}),
+            submit("/v8/engine/model", None),
         ]
         if any(job["state"] != "succeeded" for job in jobs):
             report("load/unload cycles", False, f"cycle {cycle + 1}: {[job['state'] for job in jobs]}")
@@ -255,11 +256,11 @@ def _lora_image(loras: list[str] | None) -> tuple[dict, str | None]:
     if loras:
         scale = float(os.environ.get("LORA_SCALE", "1.0"))
         request["loras"] = [{"name": name, "scale": scale} for name in loras]
-    job = submit("/v1/model/load", request)
+    job = submit("/v8/engine/model", request)
     if job["state"] != "succeeded":
         return job, None
     steps = int(os.environ.get("LORA_STEPS", LORA_REQUEST["steps"]))
-    job = submit("/v1/generate", {**LORA_REQUEST, "steps": steps, "width": 768, "height": 768})
+    job = submit("/v8/generate", {**LORA_REQUEST, "steps": steps, "width": 768, "height": 768})
     found = images(job)
     return job, found[0]["path"] if found else None
 
@@ -272,7 +273,7 @@ def step_lora() -> None:
     if not names:
         report("lora", False, "Set LORAS to a comma-separated list of LoRA names.")
         return
-    listed = {item["name"] for item in api("GET", "/v1/loras")["loras"]}
+    listed = {item["name"] for item in api("GET", "/v8/loras")["loras"]}
     missing = [name for name in names if name not in listed]
     report("lora list", not missing, f"missing={missing}" if missing else f"{len(names)} LoRAs listed")
     if missing:
@@ -301,7 +302,7 @@ def _upload_bytes(data: bytes) -> str:
     head = f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="in.png"\r\nContent-Type: image/png\r\n\r\n'
     body = head.encode() + data + f"\r\n--{boundary}--\r\n".encode()
     content_type = {"content-type": f"multipart/form-data; boundary={boundary}"}
-    return json.loads(call("POST", "/v1/uploads", raw=body, headers=content_type)[1])["upload_id"]
+    return json.loads(call("POST", "/v8/uploads", raw=body, headers=content_type)[1])["upload_id"]
 
 
 def step_inpaint() -> None:
@@ -322,17 +323,17 @@ def step_inpaint() -> None:
     mask.save(buffer, "PNG")
     image_id, mask_id = _upload_bytes(source_bytes), _upload_bytes(buffer.getvalue())
 
-    status, data, headers = call("POST", "/v1/masks/preview", {"image_path": image_id, "mask_image": mask_id})
+    status, data, headers = call("POST", "/v8/masks/preview", {"image_path": image_id, "mask_image": mask_id})
     report("mask preview", status == 200 and headers.get("content-type") == "image/png", f"{status} {len(data)} bytes")
 
     started = time.time()
-    job = submit("/v1/model/load", {"model": MODEL, "base_model": base})
+    job = submit("/v8/engine/model", {"model": MODEL, "base_model": base})
     report("load with ControlNet", job["state"] == "succeeded", f"{time.time() - started:.0f}s err={job['error']}")
     if job["state"] != "succeeded":
         return
     request = {"prompt": "a bright red balloon floating", "seed": [3], "steps": 20}
     started = time.time()
-    job = submit("/v1/generate", {**request, "image_path": image_id, "mask_image": mask_id})
+    job = submit("/v8/generate", {**request, "image_path": image_id, "mask_image": mask_id})
     found = images(job)
     if not found:
         report("inpaint", False, f"state={job['state']} err={job['error']}")
@@ -348,7 +349,7 @@ def step_inpaint() -> None:
             f"{time.time() - started:.0f}s changed inside={inside:.1f} outside={outside:.1f} image {found[0]['path']}",
         )
     started = time.time()
-    job = submit("/v1/generate", {**request, "controlnet_image_path": image_id, "steps": 20})
+    job = submit("/v8/generate", {**request, "controlnet_image_path": image_id, "steps": 20})
     found = images(job)
     report(
         "control image",
@@ -371,13 +372,13 @@ def step_control() -> None:
     edges.save(buffer, "PNG")
     control_id = _upload_bytes(buffer.getvalue())
     started = time.time()
-    job = submit("/v1/model/load", {"model": MODEL, "base_model": base})
+    job = submit("/v8/engine/model", {"model": MODEL, "base_model": base})
     report("load with ControlNet", job["state"] == "succeeded", f"{time.time() - started:.0f}s err={job['error']}")
     if job["state"] != "succeeded":
         return
     started = time.time()
     request = {"prompt": "a puffin on a rock, photo", "seed": [4], "steps": 9, "width": 512, "height": 512}
-    job = submit("/v1/generate", {**request, "control": [f"canny:{control_id}:0.8"]})
+    job = submit("/v8/generate", {**request, "control": [f"canny:{control_id}:0.8"]})
     found = images(job)
     report(
         "generate with a canny control",

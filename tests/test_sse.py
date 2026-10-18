@@ -42,14 +42,14 @@ def test_the_first_event_arrives_while_the_job_still_runs_and_the_token_is_check
         job = engine.submit_generate({"prompt": "a cat", "steps": 2, "seed": [0]})
         assert FakeModel.held.wait(10)
         refused = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        refused.request("GET", f"/v1/jobs/{job.id}/events")
+        refused.request("GET", f"/v8/jobs/{job.id}/events")
         refused_response = refused.getresponse()
         assert refused_response.status == 401
         refused_response.read()
         refused.close()
         connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
         opened.append(connection)
-        connection.request("GET", f"/v1/jobs/{job.id}/events", headers={"authorization": "Bearer secret"})
+        connection.request("GET", f"/v8/jobs/{job.id}/events", headers={"authorization": "Bearer secret"})
         response = connection.getresponse()
         first = response.readline().decode()
         assert response.status == 200 and first.startswith("event:")  # the job is still held on step 0

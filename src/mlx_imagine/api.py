@@ -81,21 +81,21 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
     # -- server ------------------------------------------------------------------------------------------------
 
-    @app.get("/v1/health")
+    @app.get("/v8/health")
     def health() -> dict[str, Any]:
         from importlib.metadata import version
 
         return {"status": "ok", "server_version": __version__, "mflux_version": version("mflux")}
 
-    @app.get("/v1/server")
+    @app.get("/v8/server")
     def server() -> dict[str, Any]:
         return engine.status()
 
-    @app.get("/v1/config")
+    @app.get("/v8/config")
     def get_config() -> dict[str, Any]:
         return {"config": engine.settings.public_dict(), "restart_required": sorted(engine.restart_required)}
 
-    @app.patch("/v1/config")
+    @app.patch("/v8/config")
     def patch_config(
         changes: dict[str, Any] = Body(..., examples=[{"queue": {"queue_max_length": 50}, "cache_limit_gb": 4}]),
     ) -> dict[str, Any]:
@@ -104,7 +104,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
     # -- models ------------------------------------------------------------------------------------------------
 
-    @app.get("/v1/models/mflux")
+    @app.get("/v8/models")
     def list_models(
         location: Annotated[Location, Query(description="local (this Mac) or remote (a Hugging Face address).")] = None,  # ty: ignore[invalid-parameter-default]
         format: Annotated[ModelFormat, Query(description="hf (original layout) or mflux (mflux layout).")] = None,  # ty: ignore[invalid-parameter-default]
@@ -119,16 +119,16 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
                    "family": family, "q": q, "limit": limit, "cursor": cursor}  # fmt: skip
         return engine.catalog.list_models(filters)
 
-    @app.post("/v1/models/mflux/rescan")
+    @app.post("/v8/models/scans", status_code=202)
     def rescan() -> dict[str, Any]:
         engine.catalog.scan_all()
         return engine.catalog.status()
 
-    @app.get("/v1/models/mflux/registry")
+    @app.get("/v8/registry")
     def registry_models() -> dict[str, Any]:
         return {"models": [entry.to_dict() for entry in engine.registry.entries().values()]}
 
-    @app.get("/v1/models/mflux/schemas/{name}")
+    @app.get("/v8/registry/{name}/schema")
     def model_schema(name: str) -> dict[str, Any]:
         from .options import schemas
 
@@ -136,16 +136,28 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         assert entry.spec is not None
         return {"name": entry.name, **schemas(entry.spec)}
 
-    @app.post("/v1/models/mflux/downloads", status_code=202)
+    @app.post("/v8/downloads", status_code=202)
     def download(
-        body: dict[str, Any] = Body(..., examples=[{"model": "z-image-turbo", "confirm": True}]),
+        body: dict[str, Any] = Body(
+            ...,
+            examples=[
+                {"kind": "model", "model": "z-image-turbo", "confirm": True},
+                {"kind": "lora", "repo_id": "owner/name", "filename": "style.safetensors", "confirm": True},
+            ],
+        ),
     ) -> dict[str, Any]:
+        kind = body.get("kind", "model")
+        if kind == "lora":
+            job = engine.submit_lora_download(body.get("repo_id"), body.get("filename"), body.get("confirm") is True)
+            return engine.queue.describe(job)
+        if kind != "model":
+            raise invalid_request("The download kind must be 'model' or 'lora'.", kind=kind)
         model = body.get("model")
         if not isinstance(model, str):
             raise invalid_request("The download request needs 'model'.")
         return engine.queue.describe(engine.submit_download(model, body.get("confirm") is True))
 
-    @app.post("/v1/models/mflux/saves", status_code=202)
+    @app.post("/v8/saves", status_code=202)
     def save(
         body: dict[str, Any] = Body(
             ..., examples=[{"model": "z-image-turbo", "quantize": 8, "name": "z-image-turbo-q8"}]
@@ -153,11 +165,11 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
     ) -> dict[str, Any]:
         return engine.queue.describe(engine.submit_save(body))
 
-    @app.get("/v1/models/mflux/{store}/{name:path}")
+    @app.get("/v8/models/{store}/{name:path}")
     def get_model(store: Store, name: str) -> dict[str, Any]:
         return engine.catalog.get(store, name)
 
-    @app.patch("/v1/models/mflux/{store}/{name:path}")
+    @app.patch("/v8/models/{store}/{name:path}")
     def set_base(
         store: Store, name: str, body: dict[str, Any] = Body(..., examples=[{"base_model": "z-image-turbo"}])
     ) -> dict[str, Any]:
@@ -168,7 +180,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
             raise invalid_request("The request needs 'base_model'.")
         return engine.set_base_model(name, base_model)
 
-    @app.delete("/v1/models/mflux/{store}/{name:path}")
+    @app.delete("/v8/models/{store}/{name:path}")
     def delete_model(
         store: Store, name: str, confirm: bool = Query(False, description="Must be true.")
     ) -> dict[str, Any]:
@@ -176,30 +188,23 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
     # -- LoRA files --------------------------------------------------------------------------------------------
 
-    @app.get("/v1/loras")
+    @app.get("/v8/loras")
     def list_loras() -> dict[str, Any]:
         return {"directory": str(engine.lora_dir), "loras": engine.list_loras()}
 
-    @app.post("/v1/loras/downloads", status_code=202)
-    def download_lora(
-        body: dict[str, Any] = Body(
-            ..., examples=[{"repo_id": "owner/name", "filename": "style.safetensors", "confirm": True}]
-        ),
-    ) -> dict[str, Any]:
-        job = engine.submit_lora_download(body.get("repo_id"), body.get("filename"), body.get("confirm") is True)
-        return engine.queue.describe(job)
-
-    @app.delete("/v1/loras/{name:path}")
+    @app.delete("/v8/loras/{name:path}")
     def delete_lora(name: str, confirm: bool = Query(False, description="Must be true.")) -> dict[str, Any]:
         return engine.delete_lora(name, confirm)
 
     # -- loaded model and generation ---------------------------------------------------------------------------
 
-    @app.get("/v1/model")
-    def loaded_model() -> Any:
-        return engine.loaded.to_dict() if engine.loaded else None
+    @app.get("/v8/engine/model")
+    def loaded_model() -> dict[str, Any]:
+        if engine.loaded is None:
+            raise ApiError("model_not_loaded", 404, "No model is loaded. Send PUT /v8/engine/model first.")
+        return engine.loaded.to_dict()
 
-    @app.post("/v1/model/load", status_code=202)
+    @app.put("/v8/engine/model", status_code=202)
     def load(
         body: dict[str, Any] = Body(
             ...,
@@ -215,11 +220,11 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
     ) -> dict[str, Any]:
         return engine.queue.describe(engine.submit_load(body))
 
-    @app.post("/v1/model/unload", status_code=202)
+    @app.delete("/v8/engine/model", status_code=202)
     def unload() -> dict[str, Any]:
         return engine.queue.describe(engine.submit_unload())
 
-    @app.post("/v1/generate", status_code=202)
+    @app.post("/v8/generate", status_code=202)
     def generate(
         body: dict[str, Any] = Body(
             ...,
@@ -228,7 +233,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
     ) -> dict[str, Any]:
         return engine.queue.describe(engine.submit_generate(body))
 
-    @app.post("/v1/uploads", status_code=201)
+    @app.post("/v8/uploads", status_code=201)
     async def upload(
         file: UploadFile = File(...),
         subdir: Annotated[str | None, Query(description="A folder inside the input directory.")] = None,
@@ -242,7 +247,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
             raise ApiError("upload_too_large", 413, f"The upload is larger than {engine.settings.max_upload_mb} MB.")
         return await asyncio.to_thread(engine.store_upload, data, suffix, subdir)
 
-    @app.post("/v1/masks/preview")
+    @app.post("/v8/masks/preview")
     async def preview_mask(
         body: dict[str, Any] = Body(..., examples=[{"image_path": "upl_01J9Z4", "mask_image": "upl_01J9Z5"}]),
     ) -> Response:
@@ -252,28 +257,28 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         png = await asyncio.to_thread(engine.preview_mask, image_path, mask_image)
         return Response(png, media_type="image/png")
 
-    @app.get("/v1/images/{job_id}/{index}")
+    @app.get("/v8/images/{job_id}/{index}")
     def image(job_id: str, index: int) -> FileResponse:
         return FileResponse(engine.image_path(job_id, index), media_type="image/png")
 
     # -- jobs --------------------------------------------------------------------------------------------------
 
-    @app.get("/v1/jobs")
+    @app.get("/v8/jobs")
     def jobs(
         state: JobState = None,  # ty: ignore[invalid-parameter-default]
         limit: int = Query(50, ge=1, le=1000),
     ) -> dict[str, Any]:
         return {"jobs": engine.queue.list_jobs(state=state, limit=limit)}
 
-    @app.get("/v1/jobs/{job_id}")
+    @app.get("/v8/jobs/{job_id}")
     def job(job_id: str) -> dict[str, Any]:
         return engine.queue.describe(engine.queue.get(job_id))
 
-    @app.delete("/v1/jobs/{job_id}")
+    @app.delete("/v8/jobs/{job_id}")
     def cancel(job_id: str) -> dict[str, Any]:
         return engine.queue.describe(engine.queue.cancel(job_id))
 
-    @app.get("/v1/jobs/{job_id}/events")
+    @app.get("/v8/jobs/{job_id}/events")
     async def events(job_id: str) -> StreamingResponse:
         job = engine.queue.get(job_id)
         return StreamingResponse(_event_stream(engine, job), media_type="text/event-stream")

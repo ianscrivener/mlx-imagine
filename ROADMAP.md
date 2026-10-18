@@ -31,7 +31,7 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 | T-18 | 6 | Wire up `mflux_models.allow_download` | `mflux-allow-download` |
 | T-08 | 3 | Refuse options that a model ignores | `ignored-options` |
 | T-11 | 5 | Fix upload sizes for EXIF orientation | `exif-size` |
-| T-16 | 6 | Capabilities in `GET /v1/model` | `model-capabilities` |
+| T-16 | 6 | Capabilities in `GET /v8/engine/model` | `model-capabilities` |
 | T-04 | 1 | Exception text goes into responses | `error-leak` |
 | T-06 | 2 | Pure ASGI auth (event stream) | `asgi-auth` |
 | T-07 | 2 | Request size limits | `request-limits` |

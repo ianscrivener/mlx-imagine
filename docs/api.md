@@ -19,7 +19,7 @@ FastAPI makes the OpenAPI file from the code. This document is the reference for
 - Header: `Authorization: Bearer <token>`.
 - On `127.0.0.1`, the token is optional. If the config sets a token, the server requires it.
 - On a different address, the server requires a token. The server does not start without one.
-- `GET /v1/health` does not require a token.
+- `GET /v8/health` does not require a token.
 - The server has no TLS (`server.use_tls` is not supported). To reach it over a network, bind it to `127.0.0.1`, and put a TLS proxy in front. [deploy/Caddyfile.example](../deploy/Caddyfile.example) is a Caddy example. It turns off the response buffer, which the event stream of a job needs.
 - At start, the server logs its address and each enabled service. It logs a warning when no token is on.
 
@@ -31,7 +31,7 @@ Each error response has this body:
 {
   "error": {
     "code": "model_not_loaded",
-    "message": "No model is loaded. Send POST /v1/model/load first.",
+    "message": "No model is loaded. Send PUT /v8/engine/model first.",
     "details": {}
   }
 }
@@ -61,7 +61,7 @@ Error codes:
 | `model_in_use` | 409 | The model is loaded, or a job in the queue uses it. |
 | `option_ignored` | 422 | The model ignores an option of the request, for example `guidance` for a guidance-distilled model, or `negative_prompt` at guidance 1.0. |
 | `limit_exceeded` | 422 | A generate request is above `limits.max_pixels`, `max_steps` or `max_seeds`. |
-| `body_too_large` | 413 | A JSON body is larger than 1 MB, or an upload (`/v1/uploads` or `/v1/images/edits`) is larger than `max_upload_mb` plus 1 MB. |
+| `body_too_large` | 413 | A JSON body is larger than 1 MB, or an upload (`/v8/uploads` or `/v1/images/edits`) is larger than `max_upload_mb` plus 1 MB. |
 | `confirm_required` | 409 | A delete request does not have `confirm` set to `true`. A download request does not have it either, and `require_model_confirmation` is `true`. |
 | `option_invalid` | 422 | An mflux option has a value that is not correct. |
 | `option_blocked` | 422 | The server does not accept this mflux option (scope 3.6). |
@@ -145,19 +145,19 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
 
 | Method and path | Description |
 |---|---|
-| `GET /v1/jobs` | List the jobs that wait, the job that runs and the last jobs that ended. |
-| `GET /v1/jobs/{id}` | Get one job. |
-| `GET /v1/jobs/{id}/events` | Server-Sent Events stream for one job. |
-| `DELETE /v1/jobs/{id}` | Cancel a job. |
+| `GET /v8/jobs` | List the jobs that wait, the job that runs and the last jobs that ended. |
+| `GET /v8/jobs/{id}` | Get one job. |
+| `GET /v8/jobs/{id}/events` | Server-Sent Events stream for one job. |
+| `DELETE /v8/jobs/{id}` | Cancel a job. |
 
-`GET /v1/jobs` query parameters:
+`GET /v8/jobs` query parameters:
 
 | Parameter | Default | Description |
 |---|---|---|
 | `state` | all | Show only jobs with this state. |
 | `limit` | `50` | The maximum number of jobs that ended to show. |
 
-`GET /v1/jobs/{id}/events` sends these events:
+`GET /v8/jobs/{id}/events` sends these events:
 
 | Event | Data |
 |---|---|
@@ -166,7 +166,7 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
 | `image` | One item of the generate result (see 5.2), when each image is complete. |
 | `end` | The final job object. The server then closes the stream. |
 
-`DELETE /v1/jobs/{id}`:
+`DELETE /v8/jobs/{id}`:
 
 - A job that waits leaves the queue at once. Its state becomes `cancelled`.
 - A job that runs stops at the next step. Its state becomes `cancelled`.
@@ -177,7 +177,7 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
 
 ### 3.1 Health
 
-`GET /v1/health` returns HTTP 200:
+`GET /v8/health` returns HTTP 200:
 
 ```json
 { "status": "ok", "server_version": "0.1.0", "mflux_version": "0.23.0" }
@@ -185,7 +185,7 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
 
 ### 3.2 Server state
 
-`GET /v1/server`:
+`GET /v8/server`:
 
 ```json
 {
@@ -236,7 +236,7 @@ Two things describe a model: its format and its location.
 
 Each section has a `local_directory`. `mflux_models` also has a `remote_url`: the Hugging Face organization with ready-made mflux models. `huggingface_models` needs no URL, because its remote location is the Hugging Face Hub.
 
-`GET /v1/config` returns all settings in the layout of the config file. `PATCH /v1/config` changes one or more settings and writes them to the config file. The default file is `~/.config/mlx-imagine/config.yaml`. The write keeps the keys that the server does not use yet, but not the comments.
+`GET /v8/config` returns all settings in the layout of the config file. `PATCH /v8/config` changes one or more settings and writes them to the config file. The default file is `~/.config/mlx-imagine/config.yaml`. The write keeps the keys that the server does not use yet, but not the comments.
 
 | Setting | Type | Default | Restart | Description |
 |---|---|---|---|---|
@@ -268,7 +268,7 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `image_metadata.exif_enabled` | boolean | `true` | No | Embed the generation data in the EXIF UserComment of each generated PNG. A generate request can set `exif_enabled` for one request. |
 | `image_metadata.iptc_enabled` | boolean | `true` | No | Embed the IPTC and XMP data (prompt, seed, model) in each generated PNG. A generate request can set `iptc_enabled` for one request. |
 | `image_metadata.json_sidecar_enabled` | boolean | `true` | No | Write a `.metadata.json` file next to each generated PNG. A generate request can set `json_sidecar_enabled` for one request. |
-| `services.api_enable` | boolean | `true` | Yes | `false` turns off the REST routes under `/v1`, except `/v1/health`. They return `api_disabled` (HTTP 404). |
+| `services.api_enable` | boolean | `true` | Yes | `false` turns off the REST routes under `/v8` and `/v1`, except `/v8/health`. They return `api_disabled` (HTTP 404). |
 | `services.mcp_enable` | boolean | `true` | Yes | `false` does not start the MCP server at `/mcp`. |
 | `services.swagger_enable` | boolean | `true` | Yes | `true` serves the Swagger page at `/docs`, ReDoc at `/redoc` and the schema at `/openapi.json`. The Swagger page lists the operations in alphabetical order. When a token is on, these paths need no token. The page has an Authorize button for it. |
 | `data_directory` | path | `~/mlx-imagine/data` | No | The folder for `mlx-imagine.sqlite` and the manifest copy. |
@@ -287,7 +287,7 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 
 A relative path in the config file is relative to the directory of the file. The server logs a key that it does not use, and starts. A `PATCH` request with an unknown key fails with `invalid_request`.
 
-`PATCH /v1/config` request:
+`PATCH /v8/config` request:
 
 ```json
 { "memory_limit_gb": 28, "huggingface_models": { "local_directory": "/Volumes/Extreme2Tb/hub" } }
@@ -309,7 +309,7 @@ A request that the config does not allow fails with `operation_disabled` (HTTP 4
 
 ## 4. Models
 
-All model routes start with `/v1/models/mflux`. The name `mflux` leaves room for other model libraries later.
+The model catalog is under `/v8/models`. The models the server can run are under `/v8/registry`.
 
 ### 4.1 The model list
 
@@ -327,7 +327,7 @@ A model has a format and a location.
 | remote | `mflux_community` | The mflux-community models in the community manifest. |
 | remote | `hub` | All of Hugging Face. A live search. |
 
-`GET /v1/models/mflux` lists models. All filters are optional and combine with AND:
+`GET /v8/models` lists models. All filters are optional and combine with AND:
 
 | Query | Values | Meaning |
 |---|---|---|
@@ -384,15 +384,15 @@ Response:
 - `supported` is true when the server can run the base model. `loadable` is true when a load request can use this model now. A model in `hf_cache` with format `mflux` is loadable when its newest snapshot has the mflux layout. A saved model without `mlx-imagine.json` is not loadable until you set `base_model`.
 - `in_manifest` is true when the community manifest names the repository.
 - A `hf_cache` model has `revisions` and `last_accessed`. A `mflux_dir` model has `mflux_version`, `saved_at` and `has_sidecar`. A remote model has `url`.
-- The local lists read the database, so they answer at once. They can be up to `cron_minutes` old. `POST /v1/models/mflux/rescan` scans both stores and syncs the manifest now.
+- The local lists read the database, so they answer at once. They can be up to `cron_minutes` old. `POST /v8/models/scans` scans both stores and syncs the manifest now.
 
-`GET /v1/models/mflux/{store}/{name}` returns one model.
+`GET /v8/models/{store}/{name}` returns one model.
 
 The database is `data/mlx-imagine.sqlite`. A thread scans the stores every `cron_minutes` and copies the manifest to `data/models_community_manifest.jsonl` when it changed. The manifest and the `hub` search reach the network only when `huggingface_models.allow_hf_access` is true. The cache scan lists a repository only when the mflux registry or the manifest names it.
 
 ### 4.2 Registry and schema
 
-`GET /v1/models/mflux/registry` lists all models in the mflux registry:
+`GET /v8/registry` lists all models in the mflux registry:
 
 ```json
 {
@@ -425,7 +425,7 @@ The database is `data/mlx-imagine.sqlite`. A thread scans the stores every `cron
 
 #### Model schema
 
-`GET /v1/models/mflux/schemas/{name}` returns two JSON Schemas for one model. The server makes them from the command's `build_parser()` (scope 3.6).
+`GET /v8/registry/{name}/schema` returns two JSON Schemas for one model. The server makes them from the command's `build_parser()` (scope 3.6).
 
 ```json
 {
@@ -451,10 +451,10 @@ The schemas do not include blocked options. The names are the `argparse` destina
 
 ### 4.3 Download
 
-`POST /v1/models/mflux/downloads` makes a `download` job:
+`POST /v8/downloads` makes a `download` job. `kind` is `model` (the default) or `lora` (4.6):
 
 ```json
-{ "model": "z-image-turbo", "confirm": true }
+{ "kind": "model", "model": "z-image-turbo", "confirm": true }
 ```
 
 - `model` is a registry name, an alias or a Hugging Face repository ID in the registry. The server downloads only the files that the model needs. The files go to the Hugging Face cache.
@@ -464,7 +464,7 @@ The schemas do not include blocked options. The names are the `argparse` destina
 
 ### 4.4 Save
 
-`POST /v1/models/mflux/saves` makes a `save` job:
+`POST /v8/saves` makes a `save` job:
 
 ```json
 { "model": "z-image-turbo", "quantize": 8, "name": "z-image-turbo-q8" }
@@ -476,7 +476,7 @@ The schemas do not include blocked options. The names are the `argparse` destina
 - The save job unloads the loaded model first, because the server keeps a maximum of one model in memory. After the save, no model is loaded.
 - The server writes `mlx-imagine.json` in the new directory.
 
-`PATCH /v1/models/mflux/mflux_dir/{name}` sets `base_model` for a model that has no sidecar file:
+`PATCH /v8/models/mflux_dir/{name}` sets `base_model` for a model that has no sidecar file:
 
 ```json
 { "base_model": "z-image-turbo" }
@@ -486,7 +486,7 @@ The server writes the sidecar file. It checks that `base_model` is a registry na
 
 ### 4.5 Delete
 
-`DELETE /v1/models/mflux/{store}/{name}?confirm=true` deletes a model from the store `hf_cache` or `mflux_dir`.
+`DELETE /v8/models/{store}/{name}?confirm=true` deletes a model from the store `hf_cache` or `mflux_dir`.
 
 - Requires `confirm=true`. Without it, the server returns `confirm_required`.
 - Returns `operation_disabled` when `allow_delete` is false for that store.
@@ -500,14 +500,14 @@ The LoRA files are in `loras.local_directory`. A LoRA name is the path of the fi
 
 | Method and path | Description |
 |---|---|
-| `GET /v1/loras` | List the LoRA files: `{"directory", "loras": [{"name", "size_mb"}]}`. `directory` is the LoRA directory. |
-| `POST /v1/loras/downloads` | Download one file from a Hugging Face repository. Makes a `lora_download` job. |
-| `DELETE /v1/loras/{name}?confirm=true` | Delete a LoRA file. |
+| `GET /v8/loras` | List the LoRA files: `{"directory", "loras": [{"name", "size_mb"}]}`. `directory` is the LoRA directory. |
+| `POST /v8/downloads` | Download one file from a Hugging Face repository, with `"kind": "lora"`. Makes a `lora_download` job. |
+| `DELETE /v8/loras/{name}?confirm=true` | Delete a LoRA file. |
 
-`POST /v1/loras/downloads` request:
+`POST /v8/downloads` request with `"kind": "lora"`:
 
 ```json
-{ "repo_id": "owner/name", "filename": "style.safetensors", "confirm": true }
+{ "kind": "lora", "repo_id": "owner/name", "filename": "style.safetensors", "confirm": true }
 ```
 
 - `repo_id` is `owner/name`. `filename` is one `.safetensors` file inside the repository, in the top folder or in one subfolder. It has no wildcard.
@@ -527,11 +527,11 @@ ControlNet is only available for a model that supports it. The server runs these
 | `qwen-image-2.1-controlnet-union`, `qwen-image-2.1-turbo-controlnet-union` | `controlnet_image_path` (canny, depth, grayscale, HED, lineart, MLSD, pose or scribble), or `image_path` with `mask_image`, or all three | Alibaba-PAI Fun ControlNet Union. One checkpoint reads all control types, so a request gives no type. With `image_path` and `mask_image` the model inpaints: white in the mask is drawn again, black stays. The server resizes the mask to the output size. With all three options the model inpaints under control. `controlnet_strength` (default `1.0`) and `output_resolution` (default `1024`) are options. The Turbo model refuses `guidance` other than `1`. |
 | `z-image-turbo-controlnet-union-2.1` | `control`: one or more `type:path[:strength]` | `type` is `canny`, `depth`, `hed`, `mlsd` or `pose`. Z-Image has no inpaint mode. |
 
-The server does not make a control image. The client makes the canny edges, the depth map or the pose image, and sends it as an upload (5.3). An MCP client uses the tool `upload_image`: it takes the image as base64 text and an optional `subdir`, and returns the same answer as `POST /v1/uploads`. It follows `image_directories.max_upload_mb`.
+The server does not make a control image. The client makes the canny edges, the depth map or the pose image, and sends it as an upload (5.3). An MCP client uses the tool `upload_image`: it takes the image as base64 text and an optional `subdir`, and returns the same answer as `POST /v8/uploads`. It follows `image_directories.max_upload_mb`.
 
 The MCP server tells a client about this in its `instructions` and in the description of each ControlNet generate tool. The schema of each image option says that it takes an upload ID or a path inside `input_dir`.
 
-`POST /v1/masks/preview` (MCP: `preview_mask`) takes `{"image_path", "mask_image"}` and returns a PNG of the image with the white area of the mask drawn in red. It needs no model and makes no job. Use it to check a mask before a long generate request. The MCP tool returns a JPEG preview of the same picture, with the size limits of 6.4.
+`POST /v8/masks/preview` (MCP: `preview_mask`) takes `{"image_path", "mask_image"}` and returns a PNG of the image with the white area of the mask drawn in red. It needs no model and makes no job. Use it to check a mask before a long generate request. The MCP tool returns a JPEG preview of the same picture, with the size limits of 6.4.
 
 A model with a ControlNet loads more weights. On a 36 GB Mac, the Qwen model with its ControlNet used about 8 GB of swap during the load. This was true also for a quantized saved model. Close other programs first.
 
@@ -541,11 +541,11 @@ A model with a ControlNet loads more weights. On a 36 GB Mac, the Qwen model wit
 
 | Method and path | Description |
 |---|---|
-| `GET /v1/model` | Get the loaded model, or `null`. |
-| `POST /v1/model/load` | Load a model. Makes a `load` job. |
-| `POST /v1/model/unload` | Unload the model. Makes an `unload` job. |
+| `GET /v8/engine/model` | Get the loaded model. Returns 404 `model_not_loaded` when none is loaded. |
+| `PUT /v8/engine/model` | Load a model. Makes a `load` job. |
+| `DELETE /v8/engine/model` | Unload the model. Makes an `unload` job. |
 
-`POST /v1/model/load` request:
+`PUT /v8/engine/model` request:
 
 ```json
 { "model": "z-image-turbo", "quantize": 8, "low_ram": false }
@@ -557,7 +557,7 @@ A model with a ControlNet loads more weights. On a 36 GB Mac, the Qwen model wit
 | `base_model` | No | Required for a saved model without a sidecar file. For a Hugging Face cache model, the community manifest gives it, so it is needed only when the manifest does not name the model. |
 | `quantize` | No | The default is `default_quantize`. Not allowed for a saved model or an mflux-format model, which is already quantized. |
 | `low_ram` | No | Default `false`. See below. |
-| `loras` | No | LoRA files from `GET /v1/loras`: a list of names, or of `{"name", "scale"}` objects. The scale is a number and the default is `1.0`. At most 8. mflux merges them into the weights at load. To change the LoRAs, send a new load request. A model that has no LoRA support returns `lora_not_supported`. |
+| `loras` | No | LoRA files from `GET /v8/loras`: a list of names, or of `{"name", "scale"}` objects. The scale is a number and the default is `1.0`. At most 8. mflux merges them into the weights at load. To change the LoRAs, send a new load request. A model that has no LoRA support returns `lora_not_supported`. |
 | other options | No | The other options in `load_schema` (4.2). |
 
 Rules:
@@ -569,9 +569,9 @@ Rules:
 Low-RAM mode (scope 3.8):
 
 - With `low_ram: true`, each generate job frees parts of the model.
-- After each generate job, the server loads the model again before the next generate job. This load is part of the next generate job. `GET /v1/model` shows `"state": "needs_reload"` between jobs.
+- After each generate job, the server loads the model again before the next generate job. This load is part of the next generate job. `GET /v8/engine/model` shows `"state": "needs_reload"` between jobs.
 
-`GET /v1/model`:
+`GET /v8/engine/model`:
 
 ```json
 { "name": "z-image-turbo", "quantize": 8, "low_ram": false, "state": "ready", "loaded_at": "2026-10-17T09:20:00Z" }
@@ -592,7 +592,7 @@ Low-RAM mode (scope 3.8):
 
 ### 5.2 Generate
 
-`POST /v1/generate` makes a `generate` job. The body uses the names in `generate_schema` (4.2).
+`POST /v8/generate` makes a `generate` job. The body uses the names in `generate_schema` (4.2).
 
 ```json
 {
@@ -629,7 +629,7 @@ Job `result`:
       "index": 0,
       "seed": 1,
       "path": "/Users/me/mlx-imagine/output/job_01J9Z3K8Q4_1.png",
-      "url": "/v1/images/job_01J9Z3K8Q4/0",
+      "url": "/v8/images/job_01J9Z3K8Q4/0",
       "width": 1024,
       "height": 1024,
       "duration_seconds": 41.8
@@ -642,7 +642,7 @@ The server saves each image in `output_dir` with the mflux metadata. It always w
 
 ### 5.3 Uploads
 
-`POST /v1/uploads` takes `multipart/form-data` with one field, `file`. Allowed types: PNG, JPEG and WebP.
+`POST /v8/uploads` takes `multipart/form-data` with one field, `file`. Allowed types: PNG, JPEG and WebP.
 
 Response, HTTP 201:
 
@@ -652,17 +652,17 @@ Response, HTTP 201:
 
 A generate request can use the `upload_id` or the `path` as `image_path`.
 
-`POST /v1/uploads?subdir=refs` saves the file in that folder of `input_dir` (5.2 gives the rules for the name). The `upload_id` finds the file in any folder.
+`POST /v8/uploads?subdir=refs` saves the file in that folder of `input_dir` (5.2 gives the rules for the name). The `upload_id` finds the file in any folder.
 
 ### 5.4 Images
 
-`GET /v1/images/{job_id}/{index}` returns the image file as `image/png`.
+`GET /v8/images/{job_id}/{index}` returns the image file as `image/png`.
 
 The server keeps all images on disk. The API has no list or delete for images (scope 3.13).
 
 ### 5.5 OpenAI-compatible routes
 
-Three routes follow the OpenAI images API, so a client that speaks it can use the server. They use the same token as the other routes, and they wait for the images as OpenAI does.
+Three routes follow the OpenAI images API, so a client that speaks it can use the server. They are the only routes under `/v1`. All other routes are under `/v8`, the native API. They use the same token as the other routes, and they wait for the images as OpenAI does.
 
 | Route | Description |
 |---|---|
@@ -672,7 +672,7 @@ Three routes follow the OpenAI images API, so a client that speaks it can use th
 
 - `model` is a registry name, an alias or a saved model. The route loads it first when it is not the loaded model. Without `model`, the route uses the loaded model.
 - `n` is the number of images. The route picks `n` random seeds. A client can add `seed`, `steps`, `guidance` and `negative_prompt`. They are not OpenAI fields, and the rules of 5.2 apply to them.
-- `response_format` defaults to `b64_json`. A `url` points to `GET /v1/images/{job_id}/{index}`, which needs the token like every route.
+- `response_format` defaults to `b64_json`. A `url` points to `GET /v8/images/{job_id}/{index}`, which needs the token like every route.
 - A client that closes the request cancels the job.
 - Not supported: streaming, partial images and masks.
 
@@ -691,26 +691,26 @@ Each tool calls the same server code as the REST endpoint.
 
 | Tool | REST endpoint | Annotations |
 |---|---|---|
-| `server_status` | `GET /v1/server` | read-only |
-| `get_config` | `GET /v1/config` | read-only |
-| `set_config` | `PATCH /v1/config` | |
-| `list_registry_models` | `GET /v1/models/mflux/registry` | read-only |
-| `list_models` | `GET /v1/models/mflux` | read-only |
-| `download_model` | `POST /v1/models/mflux/downloads` | |
-| `save_model` | `POST /v1/models/mflux/saves` | |
-| `set_saved_model_base` | `PATCH /v1/models/mflux/mflux_dir/{name}` | |
-| `delete_model` | `DELETE /v1/models/mflux/{store}/{name}` | destructive |
-| `upload_image` | `POST /v1/uploads` | |
-| `preview_mask` | `POST /v1/masks/preview` | read-only |
-| `list_loras` | `GET /v1/loras` | read-only |
-| `download_lora` | `POST /v1/loras/downloads` | |
-| `delete_lora` | `DELETE /v1/loras/{name}` | destructive |
-| `load_model` | `POST /v1/model/load` | |
-| `unload_model` | `POST /v1/model/unload` | |
-| `generate_<model>` | `POST /v1/generate` | |
-| `list_jobs` | `GET /v1/jobs` | read-only |
-| `get_job` | `GET /v1/jobs/{id}` | read-only |
-| `cancel_job` | `DELETE /v1/jobs/{id}` | destructive |
+| `server_status` | `GET /v8/server` | read-only |
+| `get_config` | `GET /v8/config` | read-only |
+| `set_config` | `PATCH /v8/config` | |
+| `list_registry_models` | `GET /v8/registry` | read-only |
+| `list_models` | `GET /v8/models` | read-only |
+| `download_model` | `POST /v8/downloads` | |
+| `save_model` | `POST /v8/saves` | |
+| `set_saved_model_base` | `PATCH /v8/models/mflux_dir/{name}` | |
+| `delete_model` | `DELETE /v8/models/{store}/{name}` | destructive |
+| `upload_image` | `POST /v8/uploads` | |
+| `preview_mask` | `POST /v8/masks/preview` | read-only |
+| `list_loras` | `GET /v8/loras` | read-only |
+| `download_lora` | `POST /v8/downloads` | |
+| `delete_lora` | `DELETE /v8/loras/{name}` | destructive |
+| `load_model` | `PUT /v8/engine/model` | |
+| `unload_model` | `DELETE /v8/engine/model` | |
+| `generate_<model>` | `POST /v8/generate` | |
+| `list_jobs` | `GET /v8/jobs` | read-only |
+| `get_job` | `GET /v8/jobs/{id}` | read-only |
+| `cancel_job` | `DELETE /v8/jobs/{id}` | destructive |
 
 The delete tools have a required `confirm` argument. It must be `true`.
 

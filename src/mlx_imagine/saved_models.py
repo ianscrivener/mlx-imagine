@@ -102,7 +102,7 @@ def base_model_of(model_dir: Path, name: str, given: str | None) -> str:
     if not sidecar or not sidecar.get("base_model"):
         raise unprocessable(
             "base_model_required",
-            f"The saved model {name!r} has no {SIDECAR}. Give base_model, or set it with PATCH /v1/models/mflux/mflux_dir/{name}.",
+            f"The saved model {name!r} has no {SIDECAR}. Give base_model, or set it with PATCH /v8/models/mflux_dir/{name}.",
             name=name,
         )
     return sidecar["base_model"]

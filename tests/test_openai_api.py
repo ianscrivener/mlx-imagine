@@ -40,7 +40,7 @@ def test_generations_loads_the_model_and_returns_base64_images(client: TestClien
     urls = client.post("/v1/images/generations", json={"prompt": "a cat", "response_format": "url", "steps": 1}).json()[
         "data"
     ]
-    assert urls[0]["url"].startswith("http://testserver/v1/images/")
+    assert urls[0]["url"].startswith("http://testserver/v8/images/")
     assert client.get(urls[0]["url"].removeprefix("http://testserver")).status_code == 200
 
 

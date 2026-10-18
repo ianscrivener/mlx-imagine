@@ -79,7 +79,7 @@ Use one scenario for each problem. Write the steps in order and end with one lin
 
 ```text
 Scenario: Save name crashes the server
-1) A client sends POST /v1/models/saved with "name": 123.
+1) A client sends POST /v8/models/saved with "name": 123.
 2) safe_name runs `"/" in name` and raises TypeError.
 3) The client gets HTTP 500.
 Fix: Refuse a name that is not a string with HTTP 400.

@@ -8,6 +8,12 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Changed
 
+- **Breaking:** the native API moved from `/v1` to `/v8`. `/v1` now holds only the OpenAI-compatible routes: `GET /v1/models`, `POST /v1/images/generations` and `POST /v1/images/edits`. The old `/v1` native routes are removed.
+- The model routes follow REST rules:
+  - `GET /v8/engine/model`, `PUT /v8/engine/model` and `DELETE /v8/engine/model` read, load and unload the model. `GET` returns 404 `model_not_loaded` when no model is loaded.
+  - `/v8/models` replaces `/v1/models/mflux`. `POST /v8/models/scans` replaces `rescan`.
+  - `GET /v8/registry` and `GET /v8/registry/{name}/schema` replace the `registry` and `schemas` routes.
+  - `POST /v8/downloads` downloads a model or a LoRA (`kind`: `model` or `lora`). `POST /v8/saves` replaces `/v1/models/mflux/saves`. `/v1/loras/downloads` is removed.
 - The Swagger page lists the operations in alphabetical order.
 - The MCP tools return a JPEG preview of at most 1024 pixels for each generated image, not the full PNG. The job result has the path of the full image.
 - `mlx-imagine mcp` is a thin stdio client of the server that runs. It no longer starts its own engine. The `just serve-mcp` recipe is removed. Run the server as a service (recommended) or with `just dev-serve`.

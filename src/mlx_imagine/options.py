@@ -31,7 +31,7 @@ LORAS_SCHEMA = {
             },
         ]
     },
-    "description": "LoRA files in the LoRA directory: a name, or an object with a name and a scale. See GET /v1/loras.",
+    "description": "LoRA files in the LoRA directory: a name, or an object with a name and a scale. See GET /v8/loras.",
 }
 
 # Generate options that the server handles itself. They are not mflux options. A request value replaces the
@@ -90,7 +90,7 @@ BLOCKED_OPTIONS = frozenset(
 
 # What a client reads in the schema for an option that names an image. These replace the help text of mflux, which
 # talks about local paths. A client sends an upload ID or a path inside the input directory.
-_WHERE = "An upload ID (from upload_image or POST /v1/uploads), or a path inside the input directory."
+_WHERE = "An upload ID (from upload_image or POST /v8/uploads), or a path inside the input directory."
 IMAGE_DESCRIPTIONS = {
     "image_path": f"The input image. {_WHERE}",
     "image_paths": f"The input images. Each one: {_WHERE.lower()}",

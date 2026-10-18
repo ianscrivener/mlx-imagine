@@ -527,7 +527,7 @@ class Engine:
     def submit_generate(self, request: dict[str, Any]) -> Job:
         target = self.target
         if target is None:
-            raise conflict("model_not_loaded", "No model is loaded. Send POST /v1/model/load first.")
+            raise conflict("model_not_loaded", "No model is loaded. Send PUT /v8/engine/model first.")
         if not isinstance(request, dict):
             raise invalid_request("The generate request must be a JSON object.")
         embed = {}
@@ -604,7 +604,7 @@ class Engine:
                         "index": index,
                         "seed": seed,
                         "path": str(path),
-                        "url": f"/v1/images/{job.id}/{index}",
+                        "url": f"/v8/images/{job.id}/{index}",
                         "width": width,
                         "height": height,
                         "duration_seconds": round(time.monotonic() - started, 1),

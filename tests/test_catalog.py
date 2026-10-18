@@ -122,12 +122,12 @@ def test_the_list_route_filters_and_the_old_routes_are_gone(engine: Engine, cata
     """Bug: the list route ignores a filter, or an old route still answers."""
     _saved(engine.models_dir, "m", True)
     client = TestClient(create_app(engine))
-    body = client.get("/v1/models/mflux", params={"location": "local", "format": "mflux"}).json()
+    body = client.get("/v8/models", params={"location": "local", "format": "mflux"}).json()
     assert [m["id"] for m in body["models"]] == ["mflux_dir/m"]
-    assert client.get("/v1/models/mflux/mflux_dir/m").json()["name"] == "m"
-    assert client.get("/v1/models/mflux/mflux_dir/none").status_code == 404
-    assert client.get("/v1/models/mflux", params={"store": "nope"}).status_code == 400
-    for old in ("/v1/models/saved", "/v1/models/huggingface", "/v1/models/supported"):
+    assert client.get("/v8/models/mflux_dir/m").json()["name"] == "m"
+    assert client.get("/v8/models/mflux_dir/none").status_code == 404
+    assert client.get("/v8/models", params={"store": "nope"}).status_code == 400
+    for old in ("/v8/model", "/v8/saved", "/v8/supported"):
         assert client.get(old).status_code == 404
 
 
