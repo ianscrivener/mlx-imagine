@@ -35,10 +35,12 @@ def build_parser() -> CommandLineParser:
     setattr(
         parser,
         "server_notes",
-        "This model needs a control image (controlnet_image_path), or an image and a mask (image_path and "
-        "mask_image) to inpaint. Make the control image first: the server does not make canny or depth images. "
-        "Send each image with upload_image and use its upload_id. White in the mask is drawn again. "
-        "Call preview_mask to check the mask. The first load takes long and uses much memory.",
+        "Three ways to use this model. (1) Control: give controlnet_image_path, a ready control image (canny, "
+        "depth, grayscale, HED, lineart, MLSD, pose or scribble: one checkpoint reads all, so give no type). "
+        "(2) Inpaint: give image_path and mask_image. White in the mask is drawn again. "
+        "(3) Both: give all three, to inpaint under control. controlnet_strength sets how strong the control is. "
+        "The server does not make control images: make them first. Send each image with upload_image and use its "
+        "upload_id. Call preview_mask to check a mask. The first load takes long and uses much memory.",
     )
     return parser
 

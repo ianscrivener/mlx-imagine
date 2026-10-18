@@ -8,6 +8,7 @@ describe_command(), so the server never keeps its own copy of an option list."""
 import argparse
 import contextlib
 import io
+import re
 import warnings
 from pathlib import Path
 from typing import Any
@@ -94,12 +95,13 @@ IMAGE_DESCRIPTIONS = {
     "image_path": f"The input image. {_WHERE}",
     "image_paths": f"The input images. Each one: {_WHERE.lower()}",
     "controlnet_image_path": (
-        "A control image that is ready to use: canny edges, a depth map, a pose image, and so on. "
-        f"The server does not make it. {_WHERE}"
+        "A control image that is ready to use. The type is canny, depth, grayscale, HED, lineart, MLSD, pose or "
+        "scribble. One checkpoint reads all types, so you give no type. The server does not make the image. "
+        f"Use it alone, or with image_path and mask_image to inpaint under control. {_WHERE}"
     ),
     "mask_image": (
-        "The mask for image_path, with the same size. White is drawn again, black stays. "
-        f"Check it with preview_mask. {_WHERE}"
+        "The mask for image_path. White is drawn again, black stays. The server resizes it to the output size, "
+        f"so keep the aspect ratio of image_path. Check it with preview_mask. {_WHERE}"
     ),
     "control": (
         "A list of controls, each 'type:image[:strength]'. The type is canny, depth, hed, mlsd or pose. "
@@ -262,7 +264,9 @@ def schemas(spec: CommandSpec) -> dict[str, Any]:
         if name in IMAGE_DESCRIPTIONS:
             schema["description"] = IMAGE_DESCRIPTIONS[name]
         elif record.get("help"):
-            schema["description"] = record["help"].replace("%%", "%")
+            # A client sends field names, not command-line flags: --output-resolution is output_resolution.
+            help_text = re.sub(r"--([a-z0-9-]+)", lambda m: m.group(1).replace("-", "_"), record["help"])
+            schema["description"] = help_text.replace("%%", "%")
         default = record.get("parser_default")
         if default is not None and name != "seed":
             schema["default"] = default

@@ -45,7 +45,7 @@ Only a model with `capabilities.modes` that has `controlnet` or `inpaint` can do
 
 1. Make the control image yourself. The server does not make canny edges, a depth map or a pose image. The image must be ready to use.
 2. Give each image to the server: `POST /v1/uploads` (MCP: `upload_image` with base64 text). Use the returned `upload_id`.
-3. Qwen-Image 2.1: send `controlnet_image_path` (the control image), or send `image_path` and `mask_image` to inpaint. White in the mask is drawn again. Black stays.
+3. Qwen-Image 2.1 has three uses. Control: send `controlnet_image_path`. The type can be canny, depth, grayscale, HED, lineart, MLSD, pose or scribble, and you give no type. Inpaint: send `image_path` and `mask_image`. Both: send all three, to inpaint under control. White in the mask is drawn again. Black stays. `controlnet_strength` sets the strength of the control.
 4. Z-Image: send `control`, a list of `"type:upload_id:strength"`, for example `["canny:upl_1a2b3c:0.8"]`. The type is `canny`, `depth`, `hed`, `mlsd` or `pose`. The strength is 0.65 to 1.0.
 5. Before a long inpaint, check the mask: `POST /v1/masks/preview` (MCP: `preview_mask`). It draws the white area in red and needs no model.
 6. The first load takes long and uses much memory (the base model and the ControlNet). A generate takes minutes: follow the job.

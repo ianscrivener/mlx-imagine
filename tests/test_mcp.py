@@ -169,7 +169,8 @@ def test_a_client_can_learn_the_controlnet_workflow_from_the_mcp_alone(settings)
     assert "control image" in qwen.description and "upload_image" in qwen.description
     properties = qwen.input_schema["properties"]
     assert "White is drawn again" in properties["mask_image"]["description"]
-    assert "does not make it" in properties["controlnet_image_path"]["description"]
+    assert "does not make the image" in properties["controlnet_image_path"]["description"]
+    assert "scribble" in properties["controlnet_image_path"]["description"] and "Both" in qwen.description
     assert "upload_image" in properties["image_path"]["description"]
     zimage = tools["generate_z_image_turbo_controlnet_union_2_1"]
     assert "canny" in zimage.input_schema["properties"]["control"]["description"]
