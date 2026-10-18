@@ -208,7 +208,8 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
     "model_download": false,
     "download_needs_confirm": true,
     "max_download_gb": 0.4,
-    "model_delete": true,
+    "hf_cache_delete": true,
+    "mflux_dir_delete": true,
     "lora_delete": true
   },
   "lora_directory": "/Users/me/mlx-imagine/loras"
@@ -217,7 +218,7 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
 
 `restart_required` is `true` after a change to a setting that needs a restart (3.3).
 
-`permissions` shows what the config allows, so a client does not learn about a block from a refused call. `model_download` is `huggingface_models.allow_model_download`. It also controls the LoRA download (4.6). `max_download_gb` is `huggingface_models.max_download_model_size_gb`, or `null` for no limit. `lora_directory` is the folder for LoRA files.
+`permissions` shows what the config allows, so a client does not learn about a block from a refused call. `model_download` is `huggingface_models.allow_model_download`. It also controls the LoRA download (4.6). `max_download_gb` is `huggingface_models.max_download_model_size_gb`, or `null` for no limit. `hf_cache_delete` and `mflux_dir_delete` tell if a delete from each store is allowed (4.5). `lora_directory` is the folder for LoRA files.
 
 ### 3.3 Configuration
 
@@ -530,7 +531,7 @@ The server does not make a control image. The client makes the canny edges, the 
 
 The MCP server tells a client about this in its `instructions` and in the description of each ControlNet generate tool. The schema of each image option says that it takes an upload ID or a path inside `input_dir`.
 
-`POST /v1/masks/preview` (MCP: `preview_mask`) takes `{"image_path", "mask_image"}` and returns a PNG of the image with the white area of the mask drawn in red. It needs no model and makes no job. Use it to check a mask before a long generate request.
+`POST /v1/masks/preview` (MCP: `preview_mask`) takes `{"image_path", "mask_image"}` and returns a PNG of the image with the white area of the mask drawn in red. It needs no model and makes no job. Use it to check a mask before a long generate request. The MCP tool returns a JPEG preview of the same picture, with the size limits of 6.4.
 
 A model with a ControlNet loads more weights. On a 36 GB Mac, the Qwen model with its ControlNet used about 8 GB of swap during the load. This was true also for a quantized saved model. Close other programs first.
 
@@ -726,7 +727,7 @@ Agents work better with one call that returns the images. The tools that make a 
 
 - Default: `45` for generate tools, `0` for the other tools. A tool waits at most `55` seconds, and a larger `wait_seconds` is cut to `55`. Each MCP host ends a tool call at its own limit. Claude Code failed a call at about 60 seconds.
 - The tool sends MCP progress notifications while it waits.
-- If the job ends in the wait time, the tool returns the result. A generate tool also returns each image as MCP image content. This is a JPEG preview of at most 1024 pixels, because a full PNG can be too large for an MCP client. The `path` in the job result is the full image.
+- If the job ends in the wait time, the tool returns the result. A generate tool also returns each image as MCP image content. This is a JPEG preview of at most 1024 pixels, because a full PNG can be too large for an MCP client. The tool lowers the size and the quality until all images of the result fit in about 700 KB of base64 text. A transparent area is drawn on white. The `path` in the job result is the full image.
 - If the job does not end in the wait time, the tool returns the job object. It also returns a text that tells the agent to call `get_job` with the job ID. The job continues on the server.
 
 ## 7. Command line

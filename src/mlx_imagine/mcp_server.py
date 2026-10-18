@@ -18,11 +18,39 @@ from .options import schemas
 # seconds, although the server sent progress notifications, so a tool never waits longer than MAX_WAIT.
 DEFAULT_GENERATE_WAIT = 45
 MAX_WAIT = 55
-PREVIEW_PIXELS = 1024
+# A preview is a JPEG. A full PNG can be 2 MB or more, and an MCP client can refuse a result of that size (the Python
+# client allows 1 MiB for one event). The steps are (longest side, quality), tried in order until the base64 text
+# of all images of one result fits RESPONSE_BUDGET characters.
+PREVIEW_STEPS = ((1024, 85), (1024, 70), (768, 70), (768, 55), (512, 55), (384, 45))
+RESPONSE_BUDGET = 700_000
 READ_ONLY = {"read_only_hint": True, "open_world_hint": False}
 DESTRUCTIVE = {"destructive_hint": True, "open_world_hint": False}
 
 _PY_TYPES: dict[str, type] = {"string": str, "integer": int, "number": float, "boolean": bool}
+
+
+def jpeg_preview(source: Any, budget: int) -> bytes:
+    """A JPEG of the image, as large as the budget (base64 characters) allows. `source` is a path or PNG bytes.
+    A transparent area is drawn on white, so the preview does not show the hidden colors."""
+    import io
+
+    import PIL.Image
+
+    with PIL.Image.open(io.BytesIO(source) if isinstance(source, bytes) else source) as opened:
+        picture = opened.convert("RGBA")
+    flat = PIL.Image.new("RGBA", picture.size, (255, 255, 255, 255))
+    flat.alpha_composite(picture)
+    rgb = flat.convert("RGB")
+    data = b""
+    for side, quality in PREVIEW_STEPS:
+        candidate = rgb.copy()
+        candidate.thumbnail((side, side))
+        buffer = io.BytesIO()
+        candidate.save(buffer, "JPEG", quality=quality)
+        data = buffer.getvalue()
+        if len(data) * 4 // 3 <= budget:
+            break
+    return data
 
 
 def _annotations(**hints: Any) -> Any:
@@ -85,20 +113,6 @@ def build_mcp(engine: Engine) -> Any:
             job.unsubscribe(subscriber)
         return engine.queue.describe(job)
 
-    def preview(path: str) -> Any:
-        """The image as a JPEG of at most 1024 pixels. A full PNG can be 2 MB or more, and an MCP client can refuse
-        a result of that size. The job result has the path of the full image."""
-        import io
-
-        import PIL.Image
-
-        with PIL.Image.open(path) as source:
-            small = source.convert("RGB")
-            small.thumbnail((PREVIEW_PIXELS, PREVIEW_PIXELS))
-        buffer = io.BytesIO()
-        small.save(buffer, "JPEG", quality=85)
-        return Image(data=buffer.getvalue(), format="jpeg")
-
     def job_content(described: dict[str, Any], with_images: bool) -> list[Any]:
         content: list[Any] = [json.dumps(described)]
         if described["state"] in ("queued", "running"):
@@ -107,7 +121,10 @@ def build_mcp(engine: Engine) -> Any:
                 f"Set wait_seconds (up to {MAX_WAIT}) to wait for it."
             )
         if with_images and described["state"] == SUCCEEDED and described["type"] == "generate":
-            content += [preview(item["path"]) for item in (described["result"] or {}).get("images", [])]
+            found = (described["result"] or {}).get("images", [])
+            content += [
+                Image(data=jpeg_preview(item["path"], RESPONSE_BUDGET // len(found)), format="jpeg") for item in found
+            ]
         return content
 
     # -- server and models -------------------------------------------------------------------------------------
@@ -202,7 +219,8 @@ def build_mcp(engine: Engine) -> Any:
         """Draw the mask in red on the image and return the PNG, so you can check the mask before you generate.
         White in the mask is the area that the model draws again. Both arguments are upload IDs or paths inside
         the input directory. It needs no model."""
-        return [Image(data=call(engine.preview_mask, image_path, mask_image), format="png")]
+        png = call(engine.preview_mask, image_path, mask_image)
+        return [Image(data=jpeg_preview(png, RESPONSE_BUDGET), format="jpeg")]
 
     # -- LoRA files -------------------------------------------------------------------------------------------
 

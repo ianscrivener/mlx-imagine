@@ -123,7 +123,7 @@ def test_the_mask_preview_tool_is_read_only_and_returns_an_image(engine: Engine)
     PIL.Image.new("L", (32, 32), 255).save(engine.input_dir / "m.png")
     result = asyncio.run(build_mcp(engine).call_tool("preview_mask", {"image_path": "a.png", "mask_image": "m.png"}))
     content = result.content if hasattr(result, "content") else result[0]
-    assert content[0].type == "image" and content[0].mime_type == "image/png"
+    assert content[0].type == "image" and content[0].mime_type == "image/jpeg"
 
 
 def _png_base64() -> str:
@@ -201,3 +201,27 @@ def test_a_generate_result_gives_a_small_preview_and_not_the_full_image(engine: 
     picture = next(item for item in content if item.type == "image")
     image = PIL.Image.open(io.BytesIO(base64.b64decode(picture.data)))
     assert max(image.size) <= 1024 and len(picture.data) < 400_000 and picture.mime_type == "image/jpeg"
+
+
+def test_a_preview_fits_the_budget_and_draws_transparency_on_white() -> None:
+    """Bug: a detailed image makes a preview above the client limit, or a transparent area shows its hidden
+    color."""
+    import base64
+    import io
+
+    import numpy as np
+    import PIL.Image
+
+    from mlx_imagine.mcp_server import RESPONSE_BUDGET, jpeg_preview
+
+    noise = np.random.default_rng(2).integers(0, 255, (1024, 1024, 3), dtype=np.uint8)
+    buffer = io.BytesIO()
+    PIL.Image.fromarray(noise).save(buffer, "PNG")
+    for count in (1, 3):
+        data = jpeg_preview(buffer.getvalue(), RESPONSE_BUDGET // count)
+        assert len(base64.b64encode(data)) * count <= RESPONSE_BUDGET
+    hidden = PIL.Image.new("RGBA", (64, 64), (255, 0, 0, 0))  # fully transparent red
+    out = io.BytesIO()
+    hidden.save(out, "PNG")
+    pixel = PIL.Image.open(io.BytesIO(jpeg_preview(out.getvalue(), RESPONSE_BUDGET))).getpixel((10, 10))
+    assert min(pixel) > 240
