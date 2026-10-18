@@ -25,3 +25,16 @@ def safe_name(name: object) -> str:
     if not name or name in {".", ".."} or "/" in name or "\\" in name or name.startswith(".") or "\0" in name:
         raise invalid_request(f"{name!r} is not a valid name. Use one directory name.", name=name)
     return name
+
+
+MAX_SUBDIR_DEPTH = 3
+
+
+def subdir(base: Path, value: object) -> Path:
+    """The folder `value` names inside base: a relative path of 1 to 3 plain folder names. The folder can be new."""
+    if not isinstance(value, str) or not value or value.startswith("/") or "\\" in value:
+        raise invalid_request("A subfolder is a relative path of folder names, for example 'cats/2026'.", name=value)
+    parts = value.split("/")
+    if len(parts) > MAX_SUBDIR_DEPTH:
+        raise invalid_request(f"A subfolder can have at most {MAX_SUBDIR_DEPTH} levels.", name=value)
+    return resolve_inside(base, "/".join(safe_name(part) for part in parts))

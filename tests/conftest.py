@@ -55,6 +55,7 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
 def settings(tmp_path: Path) -> Settings:
     return Settings(
         model_dir=str(tmp_path / "models"),
+        lora_dir=str(tmp_path / "loras"),
         input_dir=str(tmp_path / "input"),
         output_dir=str(tmp_path / "output"),
         data_dir=str(tmp_path / "data"),

@@ -18,6 +18,21 @@ from .registry import CommandSpec, parse_command_line
 # Options that change which model loads, or how. They belong to the load request.
 LOAD_OPTIONS = frozenset({"model", "base_model", "quantize", "low_ram", "float32", "compute_precision"})
 
+LORAS_SCHEMA = {
+    "type": "array",
+    "items": {
+        "anyOf": [
+            {"type": "string"},
+            {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "scale": {"type": "number", "default": 1.0}},
+                "required": ["name"],
+            },
+        ]
+    },
+    "description": "LoRA files in the LoRA directory: a name, or an object with a name and a scale. See GET /v1/loras.",
+}
+
 # Generate options that the server handles itself. They are not mflux options. A request value replaces the
 # image_metadata setting for that request.
 SERVER_OPTIONS = {
@@ -32,6 +47,18 @@ SERVER_OPTIONS = {
     "json_sidecar_enabled": {
         "type": "boolean",
         "description": "Write a .metadata.json file next to each PNG. The default is the setting.",
+    },
+}
+
+# Generate options that name a folder inside the configured input or output directory (docs/api.md 5.2).
+SUBDIR_OPTIONS = {
+    "input_subdir": {
+        "type": "string",
+        "description": "A folder inside the input directory. A relative image_path is read from it. It must exist.",
+    },
+    "output_subdir": {
+        "type": "string",
+        "description": "A folder inside the output directory for the images of this request. The server makes it.",
     },
 }
 
@@ -51,7 +78,7 @@ BLOCKED_OPTIONS = frozenset(
         "no_metadata",
         "model_path",
         "image",
-        # LoRA: stage 2. The parser resolves LoRA names when it parses, and that can download.
+        # LoRA: the parser resolves LoRA names when it parses, and that can download. A load request uses 'loras'.
         "lora",
         "lora_paths",
         "lora_scales",
@@ -89,7 +116,8 @@ def to_argv(
     argv: list[str] = []
     for name, value in request.items():
         if name in BLOCKED_OPTIONS:
-            raise unprocessable("option_blocked", f"The server does not accept the option {name!r}.", option=name)
+            hint = " Use 'loras' in the load request." if name.startswith(("lora", "bake_lora")) else ""
+            raise unprocessable("option_blocked", f"The server does not accept the option {name!r}.{hint}", option=name)
         if name not in actions:
             raise unprocessable("option_invalid", f"Unknown option {name!r} for this model.", option=name)
         if allowed is not None and name not in allowed:
@@ -192,7 +220,9 @@ def schemas(spec: CommandSpec) -> dict[str, Any]:
         if default is not None and name != "seed":
             schema["default"] = default
         (load if name in LOAD_OPTIONS else generate)[name] = schema
-    generate.update({name: dict(schema) for name, schema in SERVER_OPTIONS.items()})
+    if "--lora" in by_flag:
+        load["loras"] = LORAS_SCHEMA
+    generate.update({name: dict(schema) for name, schema in {**SERVER_OPTIONS, **SUBDIR_OPTIONS}.items()})
     if "prompt" in generate:
         required.append("prompt")
     if getattr(parser, "require_image_paths", False):

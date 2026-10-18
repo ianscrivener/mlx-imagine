@@ -11,8 +11,6 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
 | T-21 | 8 | Inpainting and `preview_mask` | `inpainting` |
-| T-12 | 6 | LoRA: list, download, apply | `lora` |
-| T-25 | 7 | Per-request input and output subfolders (inside the configured folders) | `io-subdirs` |
 
 
 
@@ -20,6 +18,8 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 ## Done
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
+| T-25 | 7 | Per-request input and output subfolders (inside the configured folders) | `io-subdirs` |
+| T-12 | 6 | LoRA: list, download, apply | `lora` |
 | T-22 | 8 | Startup warning and proxy example | `proxy-example` |
 | T-15 | 6 | OpenAI-compatible adapter | `openai-api` |
 | T-10 | 5 | Measure MLX cache limit | `mlx-cache-limit` |

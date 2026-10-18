@@ -12,6 +12,8 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Added
 
+- The generate options `input_subdir` and `output_subdir`, and `subdir` for `POST /v1/uploads`. They name a folder inside the input or output directory for one request.
+- LoRA: `GET /v1/loras`, `POST /v1/loras/downloads`, `DELETE /v1/loras/{name}`, the MCP tools `list_loras`, `download_lora` and `delete_lora`, and the `loras` field of the load request. The setting `loras.local_directory` holds the files.
 - Adapters for mflux models that have no command steps. The adapters run FLUX 3 Image Klein and FLUX.2 Klein.
 - A server lock (`~/Library/Application Support/mlx-imagine/server.lock`). A second server stops with an error that gives the PID of the first.
 - `mlx-imagine`: a REST API and an MCP server for the 10 mflux commands that have command steps.

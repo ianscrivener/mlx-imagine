@@ -36,7 +36,14 @@ def build_request(body: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(count, int) or isinstance(count, bool) or count < 1:
         raise invalid_request("n must be a whole number of 1 or more.", n=count)
     request: dict[str, Any] = {"prompt": prompt, **parse_size(body.get("size"))}
-    for name in ("seed", "steps", "guidance", "negative_prompt"):  # extensions: the OpenAI API has no such field
+    for name in (
+        "seed",
+        "steps",
+        "guidance",
+        "negative_prompt",
+        "input_subdir",
+        "output_subdir",
+    ):  # extensions: the OpenAI API has no such field
         if body.get(name) is not None:
             request[name] = body[name]
     if "seed" in request and not isinstance(request["seed"], list):
@@ -127,6 +134,7 @@ def register(app: FastAPI, engine: Engine) -> None:
         n: int = Form(1),
         size: str | None = Form(None),
         response_format: str | None = Form(None),
+        output_subdir: str | None = Form(None),
     ) -> dict[str, Any]:
         from .api import UPLOAD_TYPES, _store_upload
 
@@ -139,7 +147,7 @@ def register(app: FastAPI, engine: Engine) -> None:
         if len(data) > limit:
             raise ApiError("upload_too_large", 413, f"The upload is larger than {engine.settings.max_upload_mb} MB.")
         stored = await asyncio.to_thread(_store_upload, engine, data, suffix)
-        native = build_request({"prompt": prompt, "n": n, "size": size})
+        native = build_request({"prompt": prompt, "n": n, "size": size, "output_subdir": output_subdir})
         _ensure_model(engine, model)
         modes = engine.target.entry.modes if engine.target else ()
         native["image_paths" if "edit" in modes else "image_path"] = (

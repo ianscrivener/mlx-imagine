@@ -13,13 +13,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import hf_models, saved_models
+from . import hf_models, loras as lora_files, saved_models
 from .catalog import Catalog
 from .config import Settings
 from .errors import ApiError, conflict, invalid_request, not_found, unprocessable
 from .jobs import Job, JobCancelled, JobQueue
 from .options import (
     SERVER_OPTIONS,
+    SUBDIR_OPTIONS,
     check_image_paths,
     conditionally_ignored,
     generate_names,
@@ -28,7 +29,7 @@ from .options import (
     parse,
     to_argv,
 )
-from .paths import resolve_inside, safe_name
+from .paths import resolve_inside, safe_name, subdir
 from .registry import CommandSpec, ModelEntry, Registry
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class LoadSpec:
     quantize: int | None
     low_ram: bool
     saved_name: str | None = None
+    loras: list[dict[str, Any]] = field(default_factory=list)  # [{name, scale}] applied at load
     # An mflux-format model in the Hugging Face cache: its repository ID and its snapshot folder.
     hub_repo: str | None = None
     model_path: Path | None = None
@@ -71,6 +73,7 @@ class LoadSpec:
             "saved": self.saved_name is not None,
             "quantize": self.quantize,
             "low_ram": self.low_ram,
+            "loras": self.loras,
             "capabilities": self.capabilities,
         }
 
@@ -232,6 +235,7 @@ class Engine:
         if not isinstance(model, str) or not model:
             raise invalid_request("The load request needs 'model'.")
         base_model = request.pop("base_model", None)
+        lora_request = request.pop("loras", None)
         saved_name = self._saved_name(model)
         hub = self._hub_mflux_model(model)
         if hub is not None:
@@ -255,14 +259,28 @@ class Engine:
             self._check_quantize(request.get("quantize"))
         spec = entry.spec
         assert spec is not None
-        argv += to_argv(spec.build_parser(), request, allowed=load_names(spec))
+        parser = spec.build_parser()
+        argv += to_argv(parser, request, allowed=load_names(spec))
+        chosen = []
+        if lora_request is not None:
+            if not getattr(parser, "supports_lora", False):
+                raise unprocessable("lora_not_supported", f"{entry.name} does not support LoRA.", model=entry.name)
+            chosen = lora_files.parse_request(self.lora_dir, lora_request)
+            for item in chosen:
+                argv += ["--lora", str(item["path"]), str(item["scale"])]
         load_spec = LoadSpec(
             entry=entry,
-            request={"model": model, **({"base_model": base_model} if base_model else {}), **request},
+            request={
+                "model": model,
+                **({"base_model": base_model} if base_model else {}),
+                **({"loras": lora_request} if lora_request is not None else {}),
+                **request,
+            },
             argv=argv,
             quantize=request.get("quantize"),
             low_ram=bool(request.get("low_ram", False)),
             saved_name=saved_name,
+            loras=[{"name": item["name"], "scale": item["scale"]} for item in chosen],
             hub_repo=model if hub is not None else None,
             model_path=hub[0] if hub is not None else None,
         )
@@ -321,6 +339,7 @@ class Engine:
             "supports_guidance": "guidance" not in ignored and supports is not False,
             "default_guidance": default if default is not None else getattr(args, "guidance", None),
             "supports_negative_prompt": "negative_prompt" not in ignored and supports is not False,
+            "supports_lora": bool(getattr(spec.build_parser(), "supports_lora", False)),
         }
 
     def _check_quantize(self, quantize: Any) -> None:
@@ -485,13 +504,16 @@ class Engine:
             if request.get(name) is not None and not isinstance(request[name], bool):
                 raise unprocessable("option_invalid", f"The option {name!r} must be a boolean.", option=name)
             embed[name] = request[name] if request.get(name) is not None else getattr(self.settings, name)
-        request = check_image_paths(request, self.input_dir, self.resolve_input)
-        mflux_request = {name: value for name, value in request.items() if name not in SERVER_OPTIONS}
+        input_base, output_subdir = self._request_dirs(request)
+        request = check_image_paths(request, input_base, lambda value: self.resolve_input(value, input_base))
+        mflux_request = {
+            name: value for name, value in request.items() if name not in SERVER_OPTIONS and name not in SUBDIR_OPTIONS
+        }
         argv = to_argv(target.spec.build_parser(), mflux_request, allowed=generate_names(target.spec))
         args, warnings = self._validate(target, argv)
         self._check_ignored(target, mflux_request, args)
         self._check_limits(args)
-        job = Job("generate", request, lambda job: self._do_generate(job, argv, **embed))
+        job = Job("generate", request, lambda job: self._do_generate(job, argv, output_subdir=output_subdir, **embed))
         job.warnings = warnings
 
         def check_target() -> None:
@@ -504,6 +526,7 @@ class Engine:
         self,
         job: Job,
         generate_argv: list[str],
+        output_subdir: str | None = None,
         exif_enabled: bool = True,
         iptc_enabled: bool = True,
         json_sidecar_enabled: bool = True,
@@ -529,6 +552,9 @@ class Engine:
             images: list[dict[str, Any]] = []
             job.result = {"images": images}
             output_dir = self.output_dir
+            if output_subdir is not None:
+                output_dir = subdir(output_dir, output_subdir)
+                output_dir.mkdir(parents=True, exist_ok=True)
             try:
                 for index, seed in enumerate(args.seed):
                     job.check_cancel()
@@ -584,17 +610,78 @@ class Engine:
 
     # -- uploads -------------------------------------------------------------------------------------------------
 
-    def resolve_input(self, value: str) -> Path:
-        """An upload ID or a path inside the input directory, as a path to a file that exists."""
+    def _request_dirs(self, request: dict[str, Any]) -> tuple[Path, str | None]:
+        """The folder that relative image paths resolve against, and the output subfolder. Both are checked now,
+        so a bad name fails before the job enters the queue."""
+        base = self.input_dir
+        if request.get("input_subdir") is not None:
+            base = subdir(self.input_dir, request["input_subdir"])
+            if not base.is_dir():
+                raise not_found(
+                    f"The input subfolder {request['input_subdir']!r} does not exist.", name=request["input_subdir"]
+                )
+        output_subdir = request.get("output_subdir")
+        if output_subdir is not None:
+            subdir(self.settings.path("output_dir"), output_subdir)
+        return base, output_subdir
+
+    def resolve_input(self, value: str, base: Path | None = None) -> Path:
+        """An upload ID or a path inside the input directory (or `base`), as a path to a file that exists."""
         if value.startswith("upl_"):
-            matches = sorted(self.input_dir.glob(f"{safe_name(value)}.*"))
+            matches = sorted(self.input_dir.rglob(f"{safe_name(value)}.*"))
             if not matches:
                 raise not_found(f"No upload with ID {value!r}.", upload=value)
             return matches[0]
-        path = resolve_inside(self.input_dir, value)
+        path = resolve_inside(base or self.input_dir, value)
         if not path.is_file():
             raise not_found(f"The input image {value!r} does not exist.", path=value)
         return path
+
+    # -- LoRA files ------------------------------------------------------------------------------------------------
+
+    def list_loras(self) -> list[dict[str, Any]]:
+        return lora_files.list_loras(self.lora_dir)
+
+    def submit_lora_download(self, repo_id: Any, filename: Any, confirm: bool = False) -> Job:
+        if not self.settings.hf_allow_access:
+            raise disabled("huggingface_models.allow_hf_access is false.")
+        if not self.settings.hf_allow_model_download:
+            raise disabled("huggingface_models.allow_model_download is false.")
+        repo_id, filename = lora_files.check_download(repo_id, filename)
+        name = lora_files.target_name(repo_id, filename)
+        if (self.lora_dir / name).exists():
+            raise conflict("name_in_use", f"The LoRA directory has {name!r} already.", name=name)
+        if self.settings.hf_require_model_confirmation and not confirm:
+            size = lora_files.estimate_bytes(repo_id, filename)
+            amount = f"{size / GB:.2f} GB of" if size else "an unknown amount of"
+            raise conflict(
+                "confirm_required",
+                f"You are about to download {amount} LoRA data from Hugging Face. Set confirm to true to continue.",
+                name=name,
+            )
+        job = Job(
+            "lora_download",
+            {"repo_id": repo_id, "filename": filename},
+            lambda job: self._do_lora_download(job, repo_id, filename),
+        )
+        return self.queue.submit(job)
+
+    def _do_lora_download(self, job: Job, repo_id: str, filename: str) -> dict[str, Any]:
+        with self._job(job):
+            return lora_files.download(self.lora_dir, repo_id, filename, job)
+
+    def _loras_in_use(self) -> set[str]:
+        specs = [s for s in (self.target, self.loaded.spec if self.loaded else None) if s]
+        jobs = self.queue.waiting() + ([self.queue.running] if self.queue.running else [])
+        specs += [job.context["load_spec"] for job in jobs if isinstance(job.context.get("load_spec"), LoadSpec)]
+        return {item["name"] for spec in specs for item in spec.loras}
+
+    def delete_lora(self, name: str, confirm: bool) -> dict[str, Any]:
+        if not self.settings.lora_allow_delete:
+            raise disabled("loras.allow_delete is false.")
+        if not confirm:
+            raise conflict("confirm_required", "Set confirm to true to delete the LoRA.")
+        return lora_files.delete(self.lora_dir, name, self._loras_in_use())
 
     # -- download, save and delete --------------------------------------------------------------------------------
 
@@ -794,6 +881,10 @@ class Engine:
     @property
     def models_dir(self) -> Path:
         return self.settings.path("model_dir")
+
+    @property
+    def lora_dir(self) -> Path:
+        return self.settings.path("lora_dir")
 
     @property
     def input_dir(self) -> Path:

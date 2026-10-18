@@ -14,7 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.security import HTTPBearer
 
-from . import __version__
+from . import __version__, paths
 from .engine import Engine
 from .errors import ApiError, invalid_request
 from .middleware import AuthMiddleware, BodyLimitMiddleware
@@ -174,6 +174,25 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
     ) -> dict[str, Any]:
         return engine.delete_model(store, name, confirm)
 
+    # -- LoRA files --------------------------------------------------------------------------------------------
+
+    @app.get("/v1/loras")
+    def list_loras() -> dict[str, Any]:
+        return {"loras": engine.list_loras()}
+
+    @app.post("/v1/loras/downloads", status_code=202)
+    def download_lora(
+        body: dict[str, Any] = Body(
+            ..., examples=[{"repo_id": "owner/name", "filename": "style.safetensors", "confirm": True}]
+        ),
+    ) -> dict[str, Any]:
+        job = engine.submit_lora_download(body.get("repo_id"), body.get("filename"), body.get("confirm") is True)
+        return engine.queue.describe(job)
+
+    @app.delete("/v1/loras/{name:path}")
+    def delete_lora(name: str, confirm: bool = Query(False, description="Must be true.")) -> dict[str, Any]:
+        return engine.delete_lora(name, confirm)
+
     # -- loaded model and generation ---------------------------------------------------------------------------
 
     @app.get("/v1/model")
@@ -182,7 +201,17 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
     @app.post("/v1/model/load", status_code=202)
     def load(
-        body: dict[str, Any] = Body(..., examples=[{"model": "z-image-turbo", "quantize": 8, "low_ram": False}]),
+        body: dict[str, Any] = Body(
+            ...,
+            examples=[
+                {
+                    "model": "z-image-turbo",
+                    "quantize": 8,
+                    "low_ram": False,
+                    "loras": [{"name": "style.safetensors", "scale": 0.8}],
+                }
+            ],
+        ),
     ) -> dict[str, Any]:
         return engine.queue.describe(engine.submit_load(body))
 
@@ -200,7 +229,10 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         return engine.queue.describe(engine.submit_generate(body))
 
     @app.post("/v1/uploads", status_code=201)
-    async def upload(file: UploadFile = File(...)) -> dict[str, Any]:
+    async def upload(
+        file: UploadFile = File(...),
+        subdir: Annotated[str | None, Query(description="A folder inside the input directory.")] = None,
+    ) -> dict[str, Any]:
         suffix = UPLOAD_TYPES.get(file.content_type or "")
         if suffix is None:
             raise invalid_request("Upload a PNG, JPEG or WebP image.", content_type=file.content_type)
@@ -208,7 +240,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         data = await file.read(limit + 1)
         if len(data) > limit:
             raise ApiError("upload_too_large", 413, f"The upload is larger than {engine.settings.max_upload_mb} MB.")
-        return await asyncio.to_thread(_store_upload, engine, data, suffix)
+        return await asyncio.to_thread(_store_upload, engine, data, suffix, subdir)
 
     @app.get("/v1/images/{job_id}/{index}")
     def image(job_id: str, index: int) -> FileResponse:
@@ -241,7 +273,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
     return app
 
 
-def _store_upload(engine: Engine, data: bytes, suffix: str) -> dict[str, Any]:
+def _store_upload(engine: Engine, data: bytes, suffix: str, subdir: str | None = None) -> dict[str, Any]:
     import PIL.Image
     from mflux.utils.exif_orientation import oriented_size
 
@@ -253,7 +285,7 @@ def _store_upload(engine: Engine, data: bytes, suffix: str) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 -- any decode failure means the file is not an image
         raise invalid_request("The upload is not a readable image.") from None
     upload_id = f"upl_{secrets.token_hex(6)}"
-    input_dir = engine.input_dir
+    input_dir = engine.input_dir if subdir is None else paths.subdir(engine.input_dir, subdir)
     input_dir.mkdir(parents=True, exist_ok=True)
     path = input_dir / f"{upload_id}{suffix}"
     path.write_bytes(data)

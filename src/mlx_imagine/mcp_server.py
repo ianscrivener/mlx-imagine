@@ -158,18 +158,42 @@ def build_mcp(engine: Engine) -> Any:
         (name is the folder name). Set confirm to true."""
         return call(engine.delete_model, store, name, confirm)
 
+    # -- LoRA files -------------------------------------------------------------------------------------------
+
+    @mcp.tool(annotations=_annotations(**READ_ONLY))
+    def list_loras() -> list[dict[str, Any]]:
+        """The LoRA files in the LoRA directory. Use a name in the `loras` argument of load_model."""
+        return engine.list_loras()
+
+    @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=True))
+    async def download_lora(
+        repo_id: str, filename: str, ctx: Context, wait_seconds: float = 0, confirm: bool = False
+    ) -> dict[str, Any]:
+        """Download one .safetensors LoRA file from a Hugging Face repository. Returns the job. If the server
+        answers confirm_required, ask the user, then send confirm as true."""
+        return await wait(call(engine.submit_lora_download, repo_id, filename, confirm), wait_seconds, ctx)
+
+    @mcp.tool(annotations=_annotations(**DESTRUCTIVE))
+    def delete_lora(name: str, confirm: bool) -> dict[str, Any]:
+        """Delete a LoRA file from the LoRA directory. Set confirm to true."""
+        return call(engine.delete_lora, name, confirm)
+
     # -- loaded model and jobs ---------------------------------------------------------------------------------
 
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=False))
     async def load_model(model: str, ctx: Context, quantize: Literal[3, 4, 5, 6, 8] | None = None,
                          low_ram: bool = False, base_model: str | None = None,
+                         loras: list[dict[str, Any]] | None = None,
                          wait_seconds: float = 0) -> dict[str, Any]:  # fmt: skip
-        """Load a model: a registry name, an alias, or the name of a saved model. Unloads the old model."""
+        """Load a model: a registry name, an alias, or the name of a saved model. Unloads the old model.
+        `loras` is a list of {name, scale} from list_loras. It needs a model that supports LoRA."""
         request: dict[str, Any] = {"model": model, "low_ram": low_ram}
         if quantize is not None:
             request["quantize"] = quantize
         if base_model is not None:
             request["base_model"] = base_model
+        if loras is not None:
+            request["loras"] = loras
         return await wait(call(engine.submit_load, request), wait_seconds, ctx)
 
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=False))

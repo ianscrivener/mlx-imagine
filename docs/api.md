@@ -239,6 +239,8 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `mflux_models.allow_delete` | boolean | `true` | No | `false` refuses each delete of a saved model. |
 | `mflux_models.max_models` | integer | none | No | A save fails when the directory holds this number of models. |
 | `mflux_models.max_size_gb` | number | none | No | A save fails when the models use this size. |
+| `loras.local_directory` | path | `~/mlx-imagine/loras` | No | The LoRA files (4.6). |
+| `loras.allow_delete` | boolean | `true` | No | `false` refuses each delete of a LoRA file. |
 | `huggingface_models.local_directory` | path | `huggingface_hub` default | Yes | The Hugging Face hub cache (the folder with the `models--*` folders). Sets `HF_HUB_CACHE`. |
 | `huggingface_models.cron_minutes` | integer | `5` | No | The minutes between scans of the Hugging Face cache. The manifest sync runs with it. `0` turns both off. |
 | `huggingface_models.allow_hf_access` | boolean | `true` | Yes | `false` sets `HF_HUB_OFFLINE=1`. The server never reaches Hugging Face, and a download request returns `operation_disabled`. |
@@ -479,6 +481,30 @@ The server writes the sidecar file. It checks that `base_model` is a registry na
 - A delete from `hf_cache` uses `huggingface_hub` `delete_revisions()`. A delete from `mflux_dir` removes only a directory inside `mflux_models.local_directory`.
 - Returns HTTP 200 with the freed size.
 
+### 4.6 LoRA files
+
+The LoRA files are in `loras.local_directory`. A LoRA name is the path of the file inside that directory, for example `style/film.safetensors`. The server finds `.safetensors` files up to 3 folders deep and skips hidden folders.
+
+| Method and path | Description |
+|---|---|
+| `GET /v1/loras` | List the LoRA files: `{"loras": [{"name", "size_mb"}]}`. |
+| `POST /v1/loras/downloads` | Download one file from a Hugging Face repository. Makes a `lora_download` job. |
+| `DELETE /v1/loras/{name}?confirm=true` | Delete a LoRA file. |
+
+`POST /v1/loras/downloads` request:
+
+```json
+{ "repo_id": "owner/name", "filename": "style.safetensors", "confirm": true }
+```
+
+- `repo_id` is `owner/name`. `filename` is a `.safetensors` path inside the repository.
+- The server saves the file as `owner--name/<filename>` in the LoRA directory. It downloads only that file. If the file exists already, the server returns `name_in_use`.
+- The download follows `huggingface_models.allow_hf_access`, `allow_model_download` and `require_model_confirmation`. With confirmation on, the server returns `confirm_required` and the size.
+- A delete needs `confirm=true`. It returns `operation_disabled` when `loras.allow_delete` is false, and `lora_in_use` when the loaded model, the target model or a queued load uses the file.
+- The server never passes a Hugging Face name or a client path to mflux. A client applies a LoRA only through a file in the LoRA directory.
+
+To apply a LoRA, give `loras` in the load request (5.1).
+
 ## 5. Loaded model and generation
 
 ### 5.1 Load and unload
@@ -501,6 +527,7 @@ The server writes the sidecar file. It checks that `base_model` is a registry na
 | `base_model` | No | Required for a saved model without a sidecar file. For a Hugging Face cache model, the community manifest gives it, so it is needed only when the manifest does not name the model. |
 | `quantize` | No | The default is `default_quantize`. Not allowed for a saved model or an mflux-format model, which is already quantized. |
 | `low_ram` | No | Default `false`. See below. |
+| `loras` | No | LoRA files from `GET /v1/loras`: a list of names, or of `{"name", "scale"}` objects. The scale is a number and the default is `1.0`. At most 8. mflux merges them into the weights at load. To change the LoRAs, send a new load request. A model that has no LoRA support returns `lora_not_supported`. |
 | other options | No | The other options in `load_schema` (4.2). |
 
 Rules:
@@ -531,6 +558,7 @@ Low-RAM mode (scope 3.8):
 | `supports_guidance` | `false` when the model ignores `guidance`. A request that sets it returns `option_ignored`. |
 | `default_guidance` | The guidance when the request has none, or `null` when the model decides. |
 | `supports_negative_prompt` | `false` when the model never uses `negative_prompt`. At low guidance a model can ignore it too. |
+| `supports_lora` | `true` when a load request can use `loras`. |
 
 ### 5.2 Generate
 
@@ -554,8 +582,11 @@ Rules:
 - `seed` is a list. One job makes one image for each seed. If `seed` is missing, the server picks one random seed.
 - `exif_enabled`, `iptc_enabled` and `json_sidecar_enabled` are optional booleans. A value replaces the `image_metadata` setting for this request. They are not mflux options, and they show in the generate schema and in the generate tools of MCP.
 - `image_path` is an upload ID (5.3), or a path inside `input_dir`. A different path returns `path_not_allowed`.
+- `input_subdir` and `output_subdir` are optional strings. They are not mflux options, and they show in the generate schema and in the generate tools of MCP. A value is a relative path of 1 to 3 folder names, for example `cats/2026`. A name that is empty, absolute, hidden or has `..` returns `invalid_request` or `path_not_allowed`, before the job enters the queue.
+  - `output_subdir`: the server saves the images of this request in that folder of `output_dir`, and makes the folder when needed. The `url` of each image works as usual.
+  - `input_subdir`: a relative `image_path` is read from that folder of `input_dir`, which must exist (else `not_found`). A path outside the folder returns `path_not_allowed`. An upload ID works with or without it.
 
-Blocked options in stage 1: `output`, `prompt_file`, `config_from_metadata`, `stepwise_image_output_dir`, `battery_percentage_stop_limit`, `metadata`, `model_path`, and all LoRA options.
+Blocked options: `output`, `prompt_file`, `config_from_metadata`, `stepwise_image_output_dir`, `battery_percentage_stop_limit`, `metadata`, `model_path`, and all LoRA options (`lora`, `lora_paths`, `lora_scales`, `lora_style`, `bake_lora`). Use `loras` in the load request instead (5.1).
 
 Job `result`:
 
@@ -588,6 +619,8 @@ Response, HTTP 201:
 ```
 
 A generate request can use the `upload_id` or the `path` as `image_path`.
+
+`POST /v1/uploads?subdir=refs` saves the file in that folder of `input_dir` (5.2 gives the rules for the name). The `upload_id` finds the file in any folder.
 
 ### 5.4 Images
 
@@ -635,6 +668,9 @@ Each tool calls the same server code as the REST endpoint.
 | `save_model` | `POST /v1/models/mflux/saves` | |
 | `set_saved_model_base` | `PATCH /v1/models/mflux/mflux_dir/{name}` | |
 | `delete_model` | `DELETE /v1/models/mflux/{store}/{name}` | destructive |
+| `list_loras` | `GET /v1/loras` | read-only |
+| `download_lora` | `POST /v1/loras/downloads` | |
+| `delete_lora` | `DELETE /v1/loras/{name}` | destructive |
 | `load_model` | `POST /v1/model/load` | |
 | `unload_model` | `POST /v1/model/unload` | |
 | `generate_<model>` | `POST /v1/generate` | |

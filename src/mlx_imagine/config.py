@@ -70,6 +70,8 @@ class Settings:
     hf_max_models: int | None = None
     hf_max_size_gb: float | None = None
     # image_directories
+    lora_dir: str = "~/mlx-imagine/loras"
+    lora_allow_delete: bool = True
     input_dir: str = "~/mlx-imagine/input"
     output_dir: str = "~/mlx-imagine/output"
     max_upload_mb: int = 50
@@ -136,6 +138,8 @@ FIELDS: dict[tuple[str | None, str], tuple[str, tuple[type, ...]]] = {
     ("mflux_models", "allow_delete"): ("mflux_allow_delete", (bool,)),
     ("mflux_models", "max_models"): ("mflux_max_models", (int, type(None))),
     ("mflux_models", "max_size_gb"): ("mflux_max_size_gb", _OPTIONAL_NUMBER),
+    ("loras", "local_directory"): ("lora_dir", (str,)),
+    ("loras", "allow_delete"): ("lora_allow_delete", (bool,)),
     ("huggingface_models", "local_directory"): ("hf_hub_cache", (str, type(None))),
     ("huggingface_models", "cron_minutes"): ("hf_cron_minutes", (int,)),
     ("huggingface_models", "allow_hf_access"): ("hf_allow_access", (bool,)),
@@ -187,7 +191,9 @@ RESTART_FIELDS = frozenset(
         "use_tls",
     }
 )
-PATH_FIELDS = frozenset({"hf_hub_cache", "mflux_cache_dir", "model_dir", "input_dir", "output_dir", "data_dir"})
+PATH_FIELDS = frozenset(
+    {"hf_hub_cache", "mflux_cache_dir", "model_dir", "lora_dir", "input_dir", "output_dir", "data_dir"}
+)
 POSITIVE_FIELDS = frozenset(
     {"memory_limit_gb", "cache_limit_gb", "mflux_max_size_gb", "hf_max_size_gb", "mflux_max_models", "hf_max_models"}
 )
@@ -405,5 +411,5 @@ def apply_environment(settings: Settings) -> None:
 
 
 def make_directories(settings: Settings) -> None:
-    for name in ("model_dir", "input_dir", "output_dir", "data_dir"):
+    for name in ("model_dir", "lora_dir", "input_dir", "output_dir", "data_dir"):
         settings.path(name).mkdir(parents=True, exist_ok=True)
