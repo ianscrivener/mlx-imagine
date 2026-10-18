@@ -483,7 +483,7 @@ The server writes the sidecar file. It checks that `base_model` is a registry na
 
 ### 4.6 LoRA files
 
-The LoRA files are in `loras.local_directory`. A LoRA name is the path of the file inside that directory, for example `style/film.safetensors`. The server finds `.safetensors` files up to 3 folders deep and skips hidden folders.
+The LoRA files are in `loras.local_directory`. A LoRA name is the path of the file inside that directory, for example `style/film.safetensors`. The server finds `.safetensors` files up to 2 folders deep and skips hidden folders.
 
 | Method and path | Description |
 |---|---|
@@ -497,7 +497,7 @@ The LoRA files are in `loras.local_directory`. A LoRA name is the path of the fi
 { "repo_id": "owner/name", "filename": "style.safetensors", "confirm": true }
 ```
 
-- `repo_id` is `owner/name`. `filename` is a `.safetensors` path inside the repository.
+- `repo_id` is `owner/name`. `filename` is one `.safetensors` file inside the repository, in the top folder or in one subfolder. It has no wildcard.
 - The server saves the file as `owner--name/<filename>` in the LoRA directory. It downloads only that file. If the file exists already, the server returns `name_in_use`.
 - The download follows `huggingface_models.allow_hf_access`, `allow_model_download` and `require_model_confirmation`. With confirmation on, the server returns `confirm_required` and the size.
 - A delete needs `confirm=true`. It returns `operation_disabled` when `loras.allow_delete` is false, and `lora_in_use` when the loaded model, the target model or a queued load uses the file.

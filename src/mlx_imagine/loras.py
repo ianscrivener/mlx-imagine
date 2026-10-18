@@ -76,9 +76,14 @@ def check_download(repo_id: object, filename: object) -> tuple[str, str]:
     if (
         not isinstance(filename, str)
         or not filename.endswith(SUFFIX)
+        or len(parts) > MAX_DEPTH - 1  # the owner--name folder and the file name use the rest of the depth
         or any(p in {"", ".", ".."} or p.startswith(".") for p in parts)
+        or any(char in filename for char in "*?[]\\")  # allow_patterns reads the name as a glob
     ):
-        raise invalid_request(f"'filename' must be a file path in the repository that ends in {SUFFIX}.")
+        raise invalid_request(
+            f"'filename' must be one file in the repository, in at most 1 folder, that ends in {SUFFIX}. "
+            "It has no wildcard."
+        )
     return repo_id, filename
 
 

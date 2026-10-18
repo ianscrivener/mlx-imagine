@@ -107,6 +107,6 @@ def test_the_lora_tools_list_delete_and_load(engine: Engine) -> None:
     assert job["state"] == "succeeded", job["error"]
     assert engine.loaded.spec.loras == [{"name": "style.safetensors", "scale": 0.5}]
 
-    with pytest.raises(Exception, match="lora_in_use|confirm_required"):
+    with pytest.raises(Exception, match="lora_in_use"):
         asyncio.run(mcp.call_tool("delete_lora", {"name": "style.safetensors", "confirm": True}))
     assert path.exists()
