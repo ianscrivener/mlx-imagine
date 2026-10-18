@@ -32,7 +32,7 @@ Read the guide for Qwen-Image 2.1.
 2. Make an image of the target photo with the face from `face_closeup`.
 3. Save the result image. Give its path.
 
-The result is good when three things are true. The face is the face from `face_closeup`. The rest of the photo stays like `target_photo`. The result has the same size as `target_photo`.
+The result is good when two things are true. The face is the face from `face_closeup`. The rest of the photo stays like `target_photo`.
 
 ## When you finish
 
