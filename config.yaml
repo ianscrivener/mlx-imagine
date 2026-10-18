@@ -14,11 +14,12 @@ mflux_models:
 huggingface_models:
   local_directory: /Volumes/Crucial500Gb/HUGGINGFACE_HUB_ACTIVE
   allow_hf_access: true
-  allow_model_download: false
+  allow_model_download: true
   require_model_confirmation: true
   allow_delete: true
   max_models: 10
   max_size_gb: 150
+  max_download_model_size_gb: 0.4
   cron_minutes: 5
 
 data_directory: ./data

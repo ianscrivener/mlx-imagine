@@ -30,3 +30,7 @@ tmp-PR-body.md
 
 # The model catalog and the manifest copy
 data/
+
+# AU Agent customer testing results
+customer_testing/01_ControlNet/results/*.png
+customer_testing/01_ControlNet/results/*.md
