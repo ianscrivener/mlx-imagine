@@ -158,6 +158,15 @@ def build_mcp(engine: Engine) -> Any:
         (name is the folder name). Set confirm to true."""
         return call(engine.delete_model, store, name, confirm)
 
+    # -- mask preview -----------------------------------------------------------------------------------------
+
+    @mcp.tool(annotations=_annotations(**READ_ONLY), structured_output=False)
+    def preview_mask(image_path: str, mask_image: str) -> list[Any]:
+        """Draw the mask in red on the image and return the PNG, so you can check the mask before you generate.
+        White in the mask is the area that the model draws again. Both arguments are upload IDs or paths inside
+        the input directory. It needs no model."""
+        return [Image(data=call(engine.preview_mask, image_path, mask_image), format="png")]
+
     # -- LoRA files -------------------------------------------------------------------------------------------
 
     @mcp.tool(annotations=_annotations(**READ_ONLY))

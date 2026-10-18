@@ -88,7 +88,7 @@ BLOCKED_OPTIONS = frozenset(
 )
 
 # Options that name an input image. Each value must resolve inside the input directory.
-IMAGE_OPTIONS = frozenset({"image_path", "image_paths"})
+IMAGE_OPTIONS = frozenset({"image_path", "image_paths", "controlnet_image_path", "mask_image"})
 
 _JSON_TYPES = {
     "bool": {"type": "boolean"},
@@ -138,6 +138,10 @@ def _tokens(action: argparse.Action, name: str, value: Any) -> list[str]:
         _require(isinstance(value, bool), name, "a boolean")
         store_true = isinstance(action, argparse._StoreTrueAction)
         return [flag] if value == store_true else []
+    if isinstance(action, argparse._AppendAction) and action.nargs is None:  # a repeatable option, like --control
+        items = value if isinstance(value, list) else [value]
+        _require(bool(items) and all(isinstance(item, str) for item in items), name, "a list of strings")
+        return [token for item in items for token in ([f"{flag}={item}"] if item.startswith("-") else [flag, item])]
     if action.nargs in ("+", "*") or (isinstance(action.nargs, int) and action.nargs > 1):
         items = value if isinstance(value, list) else [value]
         _require(all(_scalar(item) for item in items), name, "a list of numbers or strings")
@@ -173,9 +177,29 @@ def parse(spec: CommandSpec, argv: list[str]) -> tuple[argparse.Namespace, list[
     return args, [str(warning.message) for warning in caught]
 
 
+def _resolve_control(spec: object, resolve: Any) -> str:
+    """`type:path[:strength]` with the path resolved inside the input directory. The split follows mflux: a last
+    part that is a number is the strength."""
+    if not isinstance(spec, str) or spec.count(":") < 1:
+        raise invalid_request("A control is a string like 'canny:image.png' or 'pose:upl_1:0.8'.", control=spec)
+    kind, _, rest = spec.partition(":")
+    path, strength = rest, None
+    head, sep, tail = rest.rpartition(":")
+    if sep:
+        try:
+            float(tail)
+            path, strength = head, tail
+        except ValueError:
+            pass
+    return ":".join([kind, str(resolve(path)), *([strength] if strength else [])])
+
+
 def check_image_paths(request: dict[str, Any], input_dir: Path, resolve: Any) -> dict[str, Any]:
     """A copy of the request with each image option resolved inside input_dir (an upload ID also works)."""
     checked = dict(request)
+    if request.get("control") is not None:
+        specs = request["control"] if isinstance(request["control"], list) else [request["control"]]
+        checked["control"] = [_resolve_control(spec, resolve) for spec in specs]
     for name in IMAGE_OPTIONS & request.keys():
         value = request[name]
         if value is None:
@@ -212,7 +236,7 @@ def schemas(spec: CommandSpec) -> dict[str, Any]:
         schema = dict(_JSON_TYPES.get(record["type"], {"type": "string"}))
         if "choices" in record:
             schema = {"enum": [_choice(choice, record["type"]) for choice in record["choices"]]}
-        if record.get("nargs") in {"+", "*"}:
+        if record.get("nargs") in {"+", "*"} or (isinstance(action, argparse._AppendAction) and action.nargs is None):
             schema = {"type": "array", "items": schema}
         if record.get("help"):
             schema["description"] = record["help"].replace("%%", "%")
@@ -220,6 +244,8 @@ def schemas(spec: CommandSpec) -> dict[str, Any]:
         if default is not None and name != "seed":
             schema["default"] = default
         (load if name in LOAD_OPTIONS else generate)[name] = schema
+        if record.get("required") and name not in LOAD_OPTIONS and name != "prompt":
+            required.append(name)
     if "--lora" in by_flag:
         load["loras"] = LORAS_SCHEMA
     generate.update({name: dict(schema) for name, schema in {**SERVER_OPTIONS, **SUBDIR_OPTIONS}.items()})

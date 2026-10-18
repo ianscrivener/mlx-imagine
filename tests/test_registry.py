@@ -23,7 +23,7 @@ def test_the_stage_1_models_and_their_commands(registry: Registry) -> None:
         "mflux-generate-z-image-turbo", "mflux-generate-z-image", "mflux-generate-ernie-image-turbo",
         "mflux-generate-ernie-image", "mflux-generate-krea2", "mflux-generate-lens", "mflux-generate-boogu",
         "mflux-generate-ideogram4", "mflux-generate-qwen", "mflux-generate-qwen-edit", "mflux-generate-flux3",
-        "mflux-generate-flux2", "mflux-generate-qwen-2.1",
+        "mflux-generate-flux2", "mflux-generate-qwen-2.1", "mflux-generate-qwen-2.1-controlnet", "mflux-generate-z-image-controlnet",
     }  # fmt: skip
 
 
@@ -40,7 +40,7 @@ def test_models_without_steps_or_in_stage_2_are_listed_with_the_reason(registry:
     """Bug: FLUX or a ControlNet model shows as supported, so a load fails deep inside mflux."""
     dev = registry.find("dev")
     assert not dev.supported and dev.reason == REASON_NO_STEPS
-    controlnet = registry.find("z-image-turbo-controlnet-union-2.1")
+    controlnet = registry.find("dev-controlnet-canny")
     assert not controlnet.supported and controlnet.reason == REASON_NO_STEPS
     with pytest.raises(ApiError) as caught:
         registry.supported("dev")

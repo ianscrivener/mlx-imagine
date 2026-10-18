@@ -293,7 +293,7 @@ Stage 1 does not include these. They are in stage 2:
 
 Out of scope (see [NON-GOALS.md](NON-GOALS.md)):
 
-- ControlNet commands.
+- ControlNet for a model that has no ControlNet. A ControlNet command for a model that supports it is in scope (NON-GOALS.md).
 - A step preview on the event stream.
 - A cache of the quantized copy at first load.
 - An AUTOMATIC1111 API shim, and a separate MCP package.

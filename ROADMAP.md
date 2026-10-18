@@ -9,7 +9,6 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 ## Defer
 | Task | Priority | Feature | Slug |
 | :-: | :-: | --- | --- |
-| T-21 | 8 | Inpainting and `preview_mask` | `inpainting` |
 
 ---
 ## Done
@@ -18,6 +17,7 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 | T-25 | 7 | Per-request input and output subfolders (inside the configured folders) | `io-subdirs` |
 | T-27 | 2 | Run the service end to end (LaunchAgent, `/mcp`, stdio client, lock) | `service-e2e` |
 | T-26 | 2 | Real-weight LoRA check (`lora` step in the real suite) | `real-lora` |
+| T-21 | 8 | Inpainting and `preview_mask` | `inpainting` |
 | T-32 | 8 | CI fails when a stray file is tracked | `stray-files` |
 | T-31 | 7 | `service status` shows the PID of the lock owner | `status-pid` |
 | T-30 | 5 | Verify phase 0 to 4: PyPI build, release dry run, OpenAPI spec | `phase-check` |
@@ -54,6 +54,11 @@ Task tracking only. Scope and design are in `docs/`. Sources: [docs/mfluxible-re
 
 ### `adapter-remaining`
 - Done: Qwen-Image 2.1 and Turbo (`adapters/qwen21.py`). Left: Fibo (3), Ming-Image.
+
+### `inpainting`
+- Done with ControlNet adapters (the maintainer chose native inpaint): `qwen21_controlnet` (control image, or image and mask) and `zimage_controlnet` (`control` specs, no inpaint). The mask blend of the review is not built. `preview_mask` is a REST route and an MCP tool.
+- Real-weight checks on 2026-10-18 (`inpaint` and `control` steps of `scripts/real/suite.py`): the Z-Image ControlNet (q8 saved model) follows a canny control image. The Qwen-Image 2.1 ControlNet inpaints with the saved q8 base model: the area inside the mask changes (mean difference 36.4 of 255), the area outside barely changes (1.9). The Qwen load needs the swap limit of the watchdog at 20 GB (`MAX_SWAP_GROWTH_MB=20000`): the first run at the default 10 GB stopped, because the 7.2 GB ControlNet loads in bf16.
+- Not built: the server-side mask blend and `mask_boxes` of the mfluxible review.
 
 ### `real-lora`
 - Run on 2026-10-18 with the saved model `Qwen--Qwen-Image-2.1-mflux-q8` (adapter `qwen21`) and 3 LoRAs for Qwen-Image 2.1: all 3 change the image with the same seed. At scale 1.0 and 12 steps two of them gave distorted faces. At scale 0.6 and 28 steps (`LORA_SCALE`, `LORA_STEPS`) all gave clean images.

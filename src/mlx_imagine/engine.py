@@ -30,7 +30,7 @@ from .options import (
     to_argv,
 )
 from .paths import resolve_inside, safe_name, subdir
-from .registry import CommandSpec, ModelEntry, Registry
+from .registry import CommandSpec, ModelEntry, Registry, placeholder_argv
 
 logger = logging.getLogger(__name__)
 
@@ -396,10 +396,7 @@ class Engine:
 
     @staticmethod
     def _placeholder_argv(spec: CommandSpec) -> list[str]:
-        argv = ["--prompt", "x"]
-        if getattr(spec.build_parser(), "require_image_paths", False):
-            argv += ["--image-paths", "x.png"]
-        return argv
+        return placeholder_argv(spec.build_parser())
 
     def submit_load(self, request: dict[str, Any]) -> Job:
         load_spec = self.build_load_spec(request)
@@ -636,6 +633,29 @@ class Engine:
         if not path.is_file():
             raise not_found(f"The input image {value!r} does not exist.", path=value)
         return path
+
+    # -- mask preview ---------------------------------------------------------------------------------------------
+
+    def preview_mask(self, image_path: str, mask_image: str) -> bytes:
+        """A PNG of the image with the mask drawn on it in red, so a client can check the mask before it generates.
+        White in the mask is the area that the model draws again. This needs no model and no job."""
+        import io
+
+        import PIL.Image
+        import PIL.ImageOps
+
+        image_file, mask_file = self.resolve_input(image_path), self.resolve_input(mask_image)
+        try:
+            with PIL.Image.open(image_file) as source, PIL.Image.open(mask_file) as raw_mask:
+                picture = PIL.ImageOps.exif_transpose(source).convert("RGB")
+                mask = raw_mask.convert("L").resize(picture.size)
+        except OSError:
+            raise invalid_request("The image or the mask is not a readable image.") from None
+        red = PIL.Image.new("RGB", picture.size, (255, 0, 0))
+        shown = PIL.Image.composite(PIL.Image.blend(picture, red, 0.5), picture, mask)
+        buffer = io.BytesIO()
+        shown.save(buffer, "PNG")
+        return buffer.getvalue()
 
     # -- LoRA files ------------------------------------------------------------------------------------------------
 

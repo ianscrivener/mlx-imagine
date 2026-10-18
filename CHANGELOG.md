@@ -12,6 +12,9 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Added
 
+- ControlNet and inpainting, for the models that support them. The adapter for Qwen-Image 2.1 with the Fun ControlNet Union takes a control image, or an image and a mask to inpaint. The adapter for Z-Image Turbo with the Fun ControlNet Union 2.1 takes `control` specs. The options `controlnet_image_path`, `mask_image` and `control` follow the input directory rules.
+- `POST /v1/masks/preview` and the MCP tool `preview_mask` draw a mask on an image, with no model.
+- The real-weight steps `inpaint` and `control`. The watchdog reads `MAX_SWAP_GROWTH_MB`.
 - An adapter for Qwen-Image 2.1 and Qwen-Image 2.1 Turbo (`adapters/qwen21.py`).
 - `mlx-imagine service status` shows `lock_owner`: the PID and address of the server that holds the lock.
 - `just dev-stray` and a CI step that fail when git tracks a scratch file, a weight file or a log.

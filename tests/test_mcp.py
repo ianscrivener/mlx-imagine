@@ -110,3 +110,17 @@ def test_the_lora_tools_list_delete_and_load(engine: Engine) -> None:
     with pytest.raises(Exception, match="lora_in_use"):
         asyncio.run(mcp.call_tool("delete_lora", {"name": "style.safetensors", "confirm": True}))
     assert path.exists()
+
+
+def test_the_mask_preview_tool_is_read_only_and_returns_an_image(engine: Engine) -> None:
+    """Bug: preview_mask changes state, or returns text, so an agent cannot see the mask."""
+    import PIL.Image
+
+    tool = _tools(engine)["preview_mask"]
+    assert tool.annotations.read_only_hint is True
+    engine.input_dir.mkdir(parents=True, exist_ok=True)
+    PIL.Image.new("RGB", (32, 32)).save(engine.input_dir / "a.png")
+    PIL.Image.new("L", (32, 32), 255).save(engine.input_dir / "m.png")
+    result = asyncio.run(build_mcp(engine).call_tool("preview_mask", {"image_path": "a.png", "mask_image": "m.png"}))
+    content = result.content if hasattr(result, "content") else result[0]
+    assert content[0].type == "image" and content[0].mime_type == "image/png"

@@ -94,9 +94,16 @@ ADAPTER_COMMANDS: tuple[CommandSpec, ...] = (
                 f"{_M}.flux2.weights.flux2_weight_definition.Flux2KleinWeightDefinition"),
     CommandSpec("qwen21", "mflux-generate-qwen-2.1", f"{_A}.qwen21", "Qwen21Command",
                 f"{_M}.qwen21.weights.qwen21_weight_definition.Qwen21WeightDefinition"),
+    CommandSpec("qwen21", "mflux-generate-qwen-2.1-controlnet", f"{_A}.qwen21_controlnet", "Qwen21ControlnetCommand",
+                f"{_M}.qwen21.weights.qwen_image21_controlnet_weight_definition.QwenImage21ControlnetWeightDefinition",
+                extra_repos=((f"{_A}.qwen21_controlnet.CONTROLNET_REPO", ("*.safetensors", "*.json")),)),
+    CommandSpec("z_image", "mflux-generate-z-image-controlnet", f"{_A}.zimage_controlnet",
+                "ZImageTurboControlnetCommand",
+                f"{_M}.z_image.weights.z_image_controlnet_weight_definition.ZImageControlnetWeightDefinition",
+                extra_repos=((f"{_A}.zimage_controlnet.CONTROLNET_REPO", ("*.safetensors", "*.json")),)),
 )  # fmt: skip
 
-# No command is in stage 2 now. ControlNet is a non-goal (NON-GOALS.md).
+# No command is in stage 2 now. ControlNet is only for a model that supports it (NON-GOALS.md).
 STAGE_2_COMMANDS: tuple[CommandSpec, ...] = ()
 
 REASON_NO_STEPS = "The mflux command for this model has no command steps."
@@ -148,9 +155,7 @@ def parse_command_line(parser: Any, argv: list[str]) -> Any:
 def accepts(spec: CommandSpec, model_name: str) -> bool:
     """True when the command's own validate() step accepts the registry name."""
     parser = spec.build_parser()
-    argv = ["--model", model_name, "--prompt", "x"]
-    if _requires_image_paths(parser):
-        argv += ["--image-paths", "x.png"]
+    argv = ["--model", model_name, *placeholder_argv(parser)]
     try:
         with contextlib.redirect_stderr(io.StringIO()), warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -167,8 +172,18 @@ def _requires_image_paths(parser: Any) -> bool:
     return bool(getattr(parser, "require_image_paths", False))
 
 
+def placeholder_argv(parser: Any) -> list[str]:
+    """A request that the command's validate() accepts, to check a model name or a load without a real request."""
+    argv = ["--prompt", "x"]
+    if _requires_image_paths(parser):
+        argv += ["--image-paths", "x.png"]
+    return argv + list(getattr(parser, "placeholder_options", []))
+
+
 def modes_of(spec: CommandSpec) -> tuple[str, ...]:
     parser = spec.build_parser()
+    if getattr(parser, "server_modes", None):
+        return tuple(parser.server_modes)
     if _requires_image_paths(parser):
         return ("edit",)
     modes = ["txt2img"]
@@ -238,8 +253,7 @@ class Registry:
         for entry in entries.values():
             if lowered in (alias.lower() for alias in entry.aliases):
                 return entry
-        # Several entries can share one repository (a ControlNet entry names its base repo). A supported one wins.
-        by_repo = sorted(self.by_repo(name), key=lambda entry: not entry.supported)
+        by_repo = self.by_repo(name)
         if by_repo:
             return by_repo[0]
         raise not_found(f"{name!r} is not an mflux model name, alias or repository ID.", model=name)
@@ -251,4 +265,7 @@ class Registry:
         return entry
 
     def by_repo(self, repo_id: str) -> list[ModelEntry]:
-        return [entry for entry in self.entries().values() if entry.hf_repo.lower() == repo_id.lower()]
+        """The entries of one repository. A ControlNet entry names its base repository too, so a supported entry
+        that has no ControlNet comes first: a repository ID means the plain model."""
+        found = [entry for entry in self.entries().values() if entry.hf_repo.lower() == repo_id.lower()]
+        return sorted(found, key=lambda entry: (not entry.supported, "controlnet" in entry.modes))

@@ -1,7 +1,7 @@
 """Real-weight checks against a running mlx-imagine. Each check prints one PASS or FAIL line.
 
 Usage: suite.py STEPS MODEL IMAGE [URL]
-  STEPS  comma-separated: load,seeds,cancel,img2img,mcp,lowram,save,unload,cycles,lora
+  STEPS  comma-separated: load,seeds,cancel,img2img,mcp,lowram,save,unload,cycles,lora,inpaint,control
   LORAS  (step lora) comma-separated LoRA names in the LoRA directory; LORA_QUANTIZE and LORA_BASE_MODEL are load fields, LORA_SCALE and LORA_STEPS tune the run
   MODEL  a saved model name in mflux_models.local_directory, or a registry name
   IMAGE  a PNG for the img2img step
@@ -296,6 +296,96 @@ def step_lora() -> None:
         )
 
 
+def _upload_bytes(data: bytes) -> str:
+    boundary = "----" + uuid.uuid4().hex
+    head = f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="in.png"\r\nContent-Type: image/png\r\n\r\n'
+    body = head.encode() + data + f"\r\n--{boundary}--\r\n".encode()
+    content_type = {"content-type": f"multipart/form-data; boundary={boundary}"}
+    return json.loads(call("POST", "/v1/uploads", raw=body, headers=content_type)[1])["upload_id"]
+
+
+def step_inpaint() -> None:
+    """Qwen-Image 2.1 ControlNet: inpaint (a source image and a mask), then a control image. MODEL is a saved
+    Qwen-Image 2.1 model or a registry name. INPAINT_BASE_MODEL names the ControlNet entry (the default)."""
+    import io
+
+    from PIL import Image, ImageChops, ImageStat
+
+    base = os.environ.get("INPAINT_BASE_MODEL", "qwen-image-2.1-controlnet-union")
+    with open(IMAGE, "rb") as file:
+        source_bytes = file.read()
+    with Image.open(io.BytesIO(source_bytes)) as source:
+        width, height = source.size
+    mask = Image.new("L", (width, height), 0)
+    mask.paste(255, (width // 4, height // 4, width * 3 // 4, height * 3 // 4))  # the middle is drawn again
+    buffer = io.BytesIO()
+    mask.save(buffer, "PNG")
+    image_id, mask_id = _upload_bytes(source_bytes), _upload_bytes(buffer.getvalue())
+
+    status, data, headers = call("POST", "/v1/masks/preview", {"image_path": image_id, "mask_image": mask_id})
+    report("mask preview", status == 200 and headers.get("content-type") == "image/png", f"{status} {len(data)} bytes")
+
+    started = time.time()
+    job = submit("/v1/model/load", {"model": MODEL, "base_model": base})
+    report("load with ControlNet", job["state"] == "succeeded", f"{time.time() - started:.0f}s err={job['error']}")
+    if job["state"] != "succeeded":
+        return
+    request = {"prompt": "a bright red balloon floating", "seed": [3], "steps": 20}
+    started = time.time()
+    job = submit("/v1/generate", {**request, "image_path": image_id, "mask_image": mask_id})
+    found = images(job)
+    if not found:
+        report("inpaint", False, f"state={job['state']} err={job['error']}")
+    else:
+        with Image.open(found[0]["path"]).convert("RGB") as result, Image.open(IMAGE).convert("RGB") as original:
+            result = result.resize(original.size)
+            difference = ImageChops.difference(result, original).convert("L")
+            inside = ImageStat.Stat(difference, mask=mask).mean[0]
+            outside = ImageStat.Stat(difference, mask=ImageChops.invert(mask)).mean[0]
+        report(
+            "inpaint",
+            inside > 2 * outside and inside > 5,
+            f"{time.time() - started:.0f}s changed inside={inside:.1f} outside={outside:.1f} image {found[0]['path']}",
+        )
+    started = time.time()
+    job = submit("/v1/generate", {**request, "controlnet_image_path": image_id, "steps": 20})
+    found = images(job)
+    report(
+        "control image",
+        bool(found),
+        f"{time.time() - started:.0f}s image {found[0]['path'] if found else None} err={job['error']}",
+    )
+
+
+def step_control() -> None:
+    """Z-Image Turbo ControlNet Union: make an edge image of IMAGE, then generate with it as a canny control.
+    MODEL is a saved Z-Image ControlNet model or a registry name. CONTROL_BASE_MODEL names the entry."""
+    import io
+
+    from PIL import Image, ImageFilter
+
+    base = os.environ.get("CONTROL_BASE_MODEL", "z-image-controlnet")
+    with Image.open(IMAGE) as source:
+        edges = source.convert("L").resize((512, 512)).filter(ImageFilter.FIND_EDGES)
+    buffer = io.BytesIO()
+    edges.save(buffer, "PNG")
+    control_id = _upload_bytes(buffer.getvalue())
+    started = time.time()
+    job = submit("/v1/model/load", {"model": MODEL, "base_model": base})
+    report("load with ControlNet", job["state"] == "succeeded", f"{time.time() - started:.0f}s err={job['error']}")
+    if job["state"] != "succeeded":
+        return
+    started = time.time()
+    request = {"prompt": "a puffin on a rock, photo", "seed": [4], "steps": 9, "width": 512, "height": 512}
+    job = submit("/v1/generate", {**request, "control": [f"canny:{control_id}:0.8"]})
+    found = images(job)
+    report(
+        "generate with a canny control",
+        bool(found),
+        f"{time.time() - started:.0f}s image {found[0]['path'] if found else None} err={job['error']}",
+    )
+
+
 STEP_FUNCTIONS = {
     "load": step_load,
     "seeds": step_seeds,
@@ -307,6 +397,8 @@ STEP_FUNCTIONS = {
     "unload": step_unload,
     "cycles": step_cycles,
     "lora": step_lora,
+    "inpaint": step_inpaint,
+    "control": step_control,
 }
 
 for name in STEPS:

@@ -505,6 +505,19 @@ The LoRA files are in `loras.local_directory`. A LoRA name is the path of the fi
 
 To apply a LoRA, give `loras` in the load request (5.1).
 
+### 4.7 ControlNet and inpainting
+
+ControlNet is only available for a model that supports it. The server runs these models (the ControlNet checkpoint comes from its own repository, which a download request fetches with the base model):
+
+| Model | Request needs | Notes |
+|---|---|---|
+| `qwen-image-2.1-controlnet-union`, `qwen-image-2.1-turbo-controlnet-union` | `controlnet_image_path` (canny, depth, pose, HED, lineart, MLSD, scribble or grayscale), or `image_path` with `mask_image` | Alibaba-PAI Fun ControlNet Union. With `image_path` and `mask_image` the model inpaints: white in the mask is drawn again, black stays. `controlnet_strength` (default `1.0`) and `output_resolution` (default `1024`) are options. The Turbo model refuses `guidance` other than `1`. |
+| `z-image-turbo-controlnet-union-2.1` | `control`: one or more `type:path[:strength]` | `type` is `canny`, `depth`, `hed`, `mlsd` or `pose`. Z-Image has no inpaint mode. |
+
+`POST /v1/masks/preview` (MCP: `preview_mask`) takes `{"image_path", "mask_image"}` and returns a PNG of the image with the white area of the mask drawn in red. It needs no model and makes no job. Use it to check a mask before a long generate request.
+
+A model with a ControlNet loads more weights. On a 36 GB Mac, the Qwen model with its ControlNet used about 8 GB of swap during the load. This was true also for a quantized saved model. Close other programs first.
+
 ## 5. Loaded model and generation
 
 ### 5.1 Load and unload
@@ -553,7 +566,7 @@ Low-RAM mode (scope 3.8):
 
 | Field | Meaning |
 |---|---|
-| `modes` | `txt2img`, `img2img` or `edit`. |
+| `modes` | `txt2img`, `img2img`, `edit`, `controlnet` or `inpaint`. A ControlNet model has `controlnet` and, for Qwen-Image 2.1, `inpaint`. It does not have `txt2img`: each request needs a control image, or an image and a mask. |
 | `default_steps` | The number of steps when the request has none. |
 | `supports_guidance` | `false` when the model ignores `guidance`. A request that sets it returns `option_ignored`. |
 | `default_guidance` | The guidance when the request has none, or `null` when the model decides. |
@@ -582,6 +595,7 @@ Rules:
 - `seed` is a list. One job makes one image for each seed. If `seed` is missing, the server picks one random seed.
 - `exif_enabled`, `iptc_enabled` and `json_sidecar_enabled` are optional booleans. A value replaces the `image_metadata` setting for this request. They are not mflux options, and they show in the generate schema and in the generate tools of MCP.
 - `image_path` is an upload ID (5.3), or a path inside `input_dir`. A different path returns `path_not_allowed`.
+- ControlNet models (4.7): `controlnet_image_path` and `mask_image` are image options like `image_path`: an upload ID, or a path inside `input_dir`. `control` is a list of strings `type:path[:strength]` (Z-Image). Each path in a control spec follows the same rule.
 - `input_subdir` and `output_subdir` are optional strings. They are not mflux options, and they show in the generate schema and in the generate tools of MCP. A value is a relative path of 1 to 3 folder names, for example `cats/2026`. A name that is empty, absolute, hidden or has `..` returns `invalid_request` or `path_not_allowed`, before the job enters the queue.
   - `output_subdir`: the server saves the images of this request in that folder of `output_dir`, and makes the folder when needed. The `url` of each image works as usual.
   - `input_subdir`: a relative `image_path` is read from that folder of `input_dir`, which must exist (else `not_found`). A path outside the folder returns `path_not_allowed`. An upload ID works with or without it.
@@ -668,6 +682,7 @@ Each tool calls the same server code as the REST endpoint.
 | `save_model` | `POST /v1/models/mflux/saves` | |
 | `set_saved_model_base` | `PATCH /v1/models/mflux/mflux_dir/{name}` | |
 | `delete_model` | `DELETE /v1/models/mflux/{store}/{name}` | destructive |
+| `preview_mask` | `POST /v1/masks/preview` | read-only |
 | `list_loras` | `GET /v1/loras` | read-only |
 | `download_lora` | `POST /v1/loras/downloads` | |
 | `delete_lora` | `DELETE /v1/loras/{name}` | destructive |

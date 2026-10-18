@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import Body, Depends, FastAPI, File, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.security import HTTPBearer
 
 from . import __version__, paths
@@ -241,6 +241,16 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         if len(data) > limit:
             raise ApiError("upload_too_large", 413, f"The upload is larger than {engine.settings.max_upload_mb} MB.")
         return await asyncio.to_thread(_store_upload, engine, data, suffix, subdir)
+
+    @app.post("/v1/masks/preview")
+    async def preview_mask(
+        body: dict[str, Any] = Body(..., examples=[{"image_path": "upl_01J9Z4", "mask_image": "upl_01J9Z5"}]),
+    ) -> Response:
+        image_path, mask_image = body.get("image_path"), body.get("mask_image")
+        if not isinstance(image_path, str) or not isinstance(mask_image, str):
+            raise invalid_request("The request needs 'image_path' and 'mask_image'.")
+        png = await asyncio.to_thread(engine.preview_mask, image_path, mask_image)
+        return Response(png, media_type="image/png")
 
     @app.get("/v1/images/{job_id}/{index}")
     def image(job_id: str, index: int) -> FileResponse:

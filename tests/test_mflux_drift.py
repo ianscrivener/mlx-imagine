@@ -13,7 +13,8 @@ from mflux.models.common.cli import save
 from mflux.models.common.resolution.path_resolution import PathResolution
 from mflux.models.flux2.cli import flux2_generate
 from mflux.models.flux3.cli import flux3_generate
-from mflux.models.qwen21.cli import qwen21_generate
+from mflux.models.qwen21.cli import qwen21_controlnet_generate, qwen21_generate
+from mflux.models.z_image.cli import z_image_turbo_generate_controlnet
 from mflux.utils.generated_image import GeneratedImage
 from mflux.utils.image_util import ImageUtil
 
@@ -27,6 +28,10 @@ PINNED = {
     "flux3_generate.main": (flux3_generate.main, "7d123c7e6603e472"),
     # adapters/qwen21.py copies the statements of this main().
     "qwen21_generate.main": (qwen21_generate.main, "d8ade010d7dbfd78"),
+    # adapters/qwen21_controlnet.py copies the statements of this main().
+    "qwen21_controlnet_generate.main": (qwen21_controlnet_generate.main, "c4f70aeb80940255"),
+    # adapters/zimage_controlnet.py copies the statements of this main().
+    "z_image_turbo_generate_controlnet.main": (z_image_turbo_generate_controlnet.main, "2b3d1e8a42120036"),
     # engine.save_image calls these two private functions to write EXIF and the metadata dictionary.
     "ImageUtil._embed_metadata": (ImageUtil._embed_metadata, "49ba7e90356b7792"),
     "GeneratedImage._get_metadata": (GeneratedImage._get_metadata, "511107ee1fe28b99"),
