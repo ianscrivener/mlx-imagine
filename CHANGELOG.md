@@ -8,7 +8,7 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Changed
 
-- `mlx-imagine mcp` is a thin stdio client of the server that runs. It no longer starts its own engine. The `just serve-mcp` recipe is removed. Run the server as a service (recommended) or with `just serve-api`.
+- `mlx-imagine mcp` is a thin stdio client of the server that runs. It no longer starts its own engine. The `just serve-mcp` recipe is removed. Run the server as a service (recommended) or with `just dev-serve`.
 
 ### Added
 

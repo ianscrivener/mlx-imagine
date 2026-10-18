@@ -89,7 +89,7 @@ pypi-build:
     uv build
 
 # Start the server (REST API and MCP over HTTP) with config.yaml (Ctrl-C to stop)
-serve-api config=config:
+dev-serve config=config:
     uv run mlx-imagine --config {{ config }} serve
 
 # Manage the macOS LaunchAgent: start | stop | restart | status | install | uninstall

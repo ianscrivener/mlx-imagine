@@ -31,7 +31,7 @@ mlx-imagine runs on macOS arm64. It uses `uv` for Python and `just` for each wor
    | All checks before a commit | `just dev-check` |
    | Tests with no weights | `just test` |
    | Build the wheel and the sdist | `just pypi-build` |
-   | Start the server | `just serve-api` |
+   | Start the server | `just dev-serve` |
    | Show a running server | `just serve-status` |
 
 4. Run Python with `uv run <command>`. Do not activate a virtualenv by hand.

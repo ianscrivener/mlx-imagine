@@ -21,7 +21,7 @@ The server takes a lock when it starts: the file `~/Library/Application Support/
 2. Edit the config file. The `just` recipes use `config.yaml` in the project folder. A server that starts without `--config` reads `~/.config/mlx-imagine/config.yaml`. Make sure that `services.mcp_enable` is `true`.
 3. Start the server. Use one of these:
    - **As a service (recommended).** `just mac-service install` installs the LaunchAgent and starts the server. The server starts at login and restarts after a crash. Use `just mac-service start | stop | restart | status` afterwards.
-   - **By hand.** `just serve-api` runs the server in the terminal. Ctrl-C stops it.
+   - **By hand.** `just dev-serve` runs the server in the terminal. Ctrl-C stops it.
 4. Check the server: `curl http://127.0.0.1:8765/v1/health`.
 
 A change to `services.mcp_enable` takes effect after a restart: `just mac-service restart`.
