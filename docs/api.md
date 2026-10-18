@@ -270,7 +270,7 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `image_metadata.json_sidecar_enabled` | boolean | `true` | No | Write a `.metadata.json` file next to each generated PNG. A generate request can set `json_sidecar_enabled` for one request. |
 | `services.api_enable` | boolean | `true` | Yes | `false` turns off the REST routes under `/v1`, except `/v1/health`. They return `api_disabled` (HTTP 404). |
 | `services.mcp_enable` | boolean | `true` | Yes | `false` does not start the MCP server at `/mcp`. |
-| `services.swagger_enable` | boolean | `true` | Yes | `true` serves the Swagger page at `/docs`, ReDoc at `/redoc` and the schema at `/openapi.json`. When a token is on, these paths need no token. The page has an Authorize button for it. |
+| `services.swagger_enable` | boolean | `true` | Yes | `true` serves the Swagger page at `/docs`, ReDoc at `/redoc` and the schema at `/openapi.json`. The Swagger page lists the operations in alphabetical order. When a token is on, these paths need no token. The page has an Authorize button for it. |
 | `data_directory` | path | `~/mlx-imagine/data` | No | The folder for `mlx-imagine.sqlite` and the manifest copy. |
 | `image_directories.input` | path | `~/mlx-imagine/input` | No | Uploads and input images. |
 | `image_directories.output` | path | `~/mlx-imagine/output` | No | Generated images. |

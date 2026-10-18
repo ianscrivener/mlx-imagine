@@ -51,6 +51,8 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
         docs_url="/docs" if swagger else None,
         redoc_url="/redoc" if swagger else None,
         openapi_url="/openapi.json" if swagger else None,
+        # The Swagger page lists the operations by path, then method, and the tag groups by name.
+        swagger_ui_parameters={"operationsSorter": "alpha", "tagsSorter": "alpha"},
         # Adds the bearer scheme to the schema, so the Swagger page shows an Authorize button. The middleware
         # below checks the token; this dependency only describes it.
         dependencies=[Depends(HTTPBearer(auto_error=False))] if swagger else [],

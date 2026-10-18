@@ -256,3 +256,9 @@ def test_an_upload_reports_the_size_after_the_exif_turn(client: TestClient) -> N
     response = client.post("/v1/uploads", files={"file": ("p.jpg", buffer.getvalue(), "image/jpeg")})
     assert response.status_code == 201
     assert (response.json()["width"], response.json()["height"]) == (100, 200)
+
+
+def test_the_swagger_page_sorts_its_operations_alphabetically(client: TestClient) -> None:
+    """Bug: the Swagger page lists the operations in the order of the code, so a reader cannot find one."""
+    page = client.get("/docs").text
+    assert '"operationsSorter": "alpha"' in page and '"tagsSorter": "alpha"' in page

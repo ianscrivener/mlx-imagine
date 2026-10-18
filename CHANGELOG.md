@@ -8,6 +8,7 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Changed
 
+- The Swagger page lists the operations in alphabetical order.
 - The MCP tools return a JPEG preview of at most 1024 pixels for each generated image, not the full PNG. The job result has the path of the full image.
 - `mlx-imagine mcp` is a thin stdio client of the server that runs. It no longer starts its own engine. The `just serve-mcp` recipe is removed. Run the server as a service (recommended) or with `just dev-serve`.
 
