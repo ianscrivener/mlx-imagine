@@ -88,10 +88,6 @@ pypi-build:
 serve-api config=config:
     uv run mlx-imagine --config {{ config }} serve
 
-# Start the MCP server on stdio with config.yaml
-serve-mcp config=config:
-    uv run mlx-imagine --config {{ config }} mcp
-
 # Manage the macOS LaunchAgent: start | stop | restart | status | install | uninstall
 mac-service action config=config:
     @case "{{ action }}" in start|stop|restart|status|install|uninstall) ;; *) echo "Use: just mac-service start|stop|restart|status|install|uninstall"; exit 1;; esac

@@ -2,25 +2,31 @@
 
 This guide tells how to connect an AI agent to mlx-imagine over MCP. [api.md](api.md#6-mcp-server) lists each tool.
 
-## 1. Choose a transport
+## 1. How it works
 
-| Transport | Use it when | Command or address |
+One server runs on your Mac. It holds the model and the GPU. Every MCP client connects to this server. No MCP client starts a server of its own.
+
+| Connection | Use it when | Command or address |
 |---|---|---|
-| Streamable HTTP | The server runs already (for example as the LaunchAgent). This is the best choice. | `http://127.0.0.1:8765/mcp` |
-| stdio | The client starts its own server process, and no other server runs. | `mlx-imagine mcp` |
+| Streamable HTTP | The client supports HTTP MCP. This is the best choice. | `http://127.0.0.1:8765/mcp` |
+| stdio client | The client supports only stdio. | `mlx-imagine mcp` |
 
-Use only one server. Two processes would each load a model and use the memory twice. The command `mlx-imagine mcp` stops with an error when a server already runs, and it gives the `/mcp` URL.
+The command `mlx-imagine mcp` is a thin client. It has no model. It passes each message to `/mcp` of the server that runs. When no server runs, it stops with an error and does not start one.
+
+The server takes a lock when it starts: the file `~/Library/Application Support/mlx-imagine/server.lock`. A second server stops with an error that gives the PID of the first server. The system drops the lock when the server ends, also after a crash.
 
 ## 2. Start the server
 
 1. Install the package with `just venv-install`.
 2. Edit the config file. The `just` recipes use `config.yaml` in the project folder. A server that starts without `--config` reads `~/.config/mlx-imagine/config.yaml`. Make sure that `services.mcp_enable` is `true`.
 3. Start the server. Use one of these:
-   - `just serve-api` runs the server in the terminal.
-   - `just mac-service start` runs it as a LaunchAgent. It starts at login.
+   - **As a service (recommended).** `just mac-service install` installs the LaunchAgent and starts the server. The server starts at login and restarts after a crash. Use `just mac-service start | stop | restart | status` afterwards.
+   - **By hand.** `just serve-api` runs the server in the terminal. Ctrl-C stops it.
 4. Check the server: `curl http://127.0.0.1:8765/v1/health`.
 
 A change to `services.mcp_enable` takes effect after a restart: `just mac-service restart`.
+
+Do not run the server by hand while the service runs. The second server stops with an error.
 
 ## 3. Connect a client
 
@@ -36,9 +42,9 @@ When the server needs a token, add the header:
 claude mcp add --transport http mlx-imagine http://127.0.0.1:8765/mcp --header "Authorization: Bearer <token>"
 ```
 
-### A client that uses stdio
+### A client that supports only stdio
 
-Use this entry in the MCP settings of the client. Give the full path of the `mlx-imagine` command and of the config file:
+Use this entry in the MCP settings of the client. Give the full path of the `mlx-imagine` command and of the config file. The command reads the address and the token from the config file:
 
 ```json
 {
@@ -46,21 +52,6 @@ Use this entry in the MCP settings of the client. Give the full path of the `mlx
     "mlx-imagine": {
       "command": "/path/to/mlx-imagine/.venv/bin/mlx-imagine",
       "args": ["--config", "/path/to/mlx-imagine/config.yaml", "mcp"]
-    }
-  }
-}
-```
-
-### A client that supports only stdio, with a server that runs
-
-Use a stdio-to-HTTP bridge such as `mcp-remote`:
-
-```json
-{
-  "mcpServers": {
-    "mlx-imagine": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "http://127.0.0.1:8765/mcp"]
     }
   }
 }
@@ -91,7 +82,8 @@ Rules for long jobs:
 |---|---|
 | The client cannot connect | The server does not run, or `services.mcp_enable` is `false`. Run `just mac-service status`. |
 | `401 unauthorized` | The token is missing or wrong. Send `Authorization: Bearer <token>`. |
-| `mlx-imagine mcp` stops with "a server runs" | Connect the client to `/mcp` instead (section 1). |
+| `mlx-imagine mcp` stops with "no server runs" | Start the server (section 2). |
+| `serve` stops with "A server already runs" | Use the server that runs, or stop it first: `just mac-service stop`. The error gives the PID. |
 | A tool call fails after about 60 seconds | The call waited too long. Use the default `wait_seconds` and read the result with `get_job`. |
 | `model_not_loaded` | Call a generate tool, or `load_model` first. |
 | `insufficient_memory` | The model is too big. Use a smaller quantization or a saved quantized model. |

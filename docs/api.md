@@ -615,8 +615,10 @@ Three routes follow the OpenAI images API, so a client that speaks it can use th
 
 ### 6.1 Transports
 
-- stdio: `mlx-imagine mcp`. The command starts an MCP server with its own engine in the same process. If a server already runs at the configured address, the command stops with an error that gives the `/mcp` URL. Two processes would each load a model.
 - Streamable HTTP: at `/mcp` on the same address and port as the REST API. It uses the same token.
+- stdio: `mlx-imagine mcp`. The command is a thin client. It has no engine and no model. It passes each message to `/mcp` of the server that runs. If no server runs, the command stops with an error and does not start a server.
+
+Only one server can run for each user. The server takes an exclusive lock on `~/Library/Application Support/mlx-imagine/server.lock` when it starts and writes its PID and address to that file. A second `serve` stops with an error that gives the PID. The system drops the lock when the process ends, so a crash leaves no stale lock.
 
 ### 6.2 Tools
 
@@ -666,7 +668,7 @@ These commands are not part of the API. They are listed here to show the full su
 |---|---|
 | `mlx-imagine` | Start the server. Same as `mlx-imagine serve`. |
 | `mlx-imagine serve [--host] [--port] [--config]` | Start the server. The flags change the config for this run only. |
-| `mlx-imagine mcp` | Start the MCP server on stdio (6.1). |
+| `mlx-imagine mcp` | MCP over stdio for the server that runs. It starts no server (6.1). |
 | `mlx-imagine service install [--force]` | macOS only. Install the LaunchAgent (scope 3.17). |
 | `mlx-imagine service uninstall` | macOS only. Stop the server and delete the LaunchAgent. |
 | `mlx-imagine service start` | macOS only. Start the server. Installs the LaunchAgent first when needed. |

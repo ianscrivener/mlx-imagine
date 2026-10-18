@@ -92,7 +92,7 @@ The server has a Streamable HTTP MCP endpoint at `http://127.0.0.1:8765/mcp`. Fo
 claude mcp add --transport http mflux http://127.0.0.1:8765/mcp
 ```
 
-For a client that uses stdio, run `mlx-imagine mcp`. The command stops with an error when a server already runs, because two processes would each load a model.
+For a client that supports only stdio, use `mlx-imagine mcp`. It is a thin client for the server that runs, and it starts no server. Run the server as a service (`just mac-service install`, recommended) or by hand (`just serve-api`). Only one server can run: a lock file stops a second one.
 
 [docs/mcp.md](docs/mcp.md) tells how to connect a client. [docs/api.md](docs/api.md#6-mcp-server) lists the tools. Each supported model has its own generate tool, for example `generate_z_image_turbo`. A generate tool loads the model if necessary, waits for the images and returns them.
 

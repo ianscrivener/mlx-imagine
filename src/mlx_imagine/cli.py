@@ -1,4 +1,4 @@
-"""The mlx-imagine command: serve, mcp and service (docs/api.md section 7).
+"""The mlx-imagine command: serve, mcp (a stdio client of the server) and service (docs/api.md section 7).
 
 The config is read and its environment is set before any module that imports mflux loads (docs/scope.md 3.9)."""
 
@@ -9,6 +9,7 @@ import urllib.request
 from pathlib import Path
 
 from . import config
+from .lock import ServerLock, ServerRunning, running_address
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", help="The address to bind to, for this run only.")
     serve.add_argument("--port", type=int, help="The port, for this run only.")
 
-    commands.add_parser("mcp", help="Start the MCP server on stdio.")
+    commands.add_parser("mcp", help="MCP over stdio for the running server. It starts no server of its own.")
 
     service = commands.add_parser("service", help="macOS only: manage the LaunchAgent.")
     service_commands = service.add_subparsers(dest="service_command", required=True)
@@ -54,22 +55,22 @@ def main(argv: list[str] | None = None) -> None:
             settings.host = args.host
         if args.port:
             settings.port = args.port
-    if command in {"serve", "mcp"}:
+    if command == "serve":
         try:
             config.check_startup(settings)
         except Exception as exc:  # noqa: BLE001 -- ApiError: a config the server must not start with
             parser.error(str(exc))
+
+    if command == "mcp":
+        _mcp_stdio(settings)
+        return
 
     config.apply_environment(settings)
     config.make_directories(settings)
     import os
 
     os.environ["MLX_IMAGINE_CONFIG"] = str(config_file)
-
-    if command == "mcp":
-        _mcp_stdio(settings)
-    else:
-        _serve(settings)
+    _serve(settings)
 
 
 def _serve(settings: config.Settings) -> None:
@@ -79,6 +80,14 @@ def _serve(settings: config.Settings) -> None:
     from .engine import Engine
     from .mcp_server import build_mcp
 
+    server_lock = ServerLock()
+    try:
+        server_lock.acquire(f"http://{settings.host}:{settings.port}")
+    except ServerRunning as exc:
+        sys.exit(
+            f"mlx-imagine: {exc} Stop it first (`mlx-imagine service stop` or Ctrl-C), "
+            f"or connect to it. Lock file: {server_lock.path}"
+        )
     _log_startup(settings)
     engine = Engine(settings)
     if settings.mcp_enable:
@@ -112,19 +121,20 @@ def _log_startup(settings: config.Settings) -> None:
 
 
 def _mcp_stdio(settings: config.Settings) -> None:
-    from .engine import Engine
-    from .mcp_server import build_mcp
+    import anyio
 
-    url = f"http://{settings.host}:{settings.port}"
-    if _healthy(f"{url}/v1/health"):
-        # Two processes would each load a model. Point the client at the server that runs instead.
-        sys.exit(f"mlx-imagine: a server runs at {url}. Connect the MCP client to {url}/mcp instead.")
-    engine = Engine(settings)
-    engine.start()
-    try:
-        build_mcp(engine).run()
-    finally:
-        engine.stop()
+    from .mcp_proxy import run_proxy
+
+    # A server started with --port records its address in the lock file. Use it, so the client finds that server.
+    url = running_address() or f"http://{settings.host}:{settings.port}"
+    if not settings.mcp_enable:
+        sys.exit("mlx-imagine: services.mcp_enable is false in the config. Set it to true and restart the server.")
+    if not _healthy(f"{url}/v1/health"):
+        sys.exit(
+            f"mlx-imagine: no server runs at {url}. Start it with `mlx-imagine service start` "
+            "(recommended) or `mlx-imagine serve`."
+        )
+    anyio.run(run_proxy, f"{url}/mcp", settings.token)
 
 
 def _service(args: argparse.Namespace, settings: config.Settings, config_file: Path) -> None:
