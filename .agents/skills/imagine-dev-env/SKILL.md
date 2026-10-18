@@ -53,6 +53,8 @@ mlx-imagine runs on macOS arm64. It uses `uv` for Python and `just` for each wor
 | Install mflux from a branch | `just mflux-branch <name>` |
 | Go back to the locked mflux from PyPI | `just mflux-reset` |
 
+Each of these recipes restarts the LaunchAgent at the end, so the server uses the new mflux. When the LaunchAgent is not installed, the recipe skips the restart. `just mflux-restart` does only the restart.
+
 After a switch, run `just test-drift`. If the drift test fails, use the `imagine-testing` skill.
 
 ## Type checking

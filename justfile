@@ -64,21 +64,29 @@ justfile-fmt:
 mflux-branch name:
     uv pip install --python {{ python }} --reinstall-package mflux "mflux @ git+{{ mflux_repo }}@{{ name }}"
     @just mflux-version
+    @just mflux-restart
 
 # Install mflux from the latest git main
 mflux-bump:
     uv pip install --python {{ python }} --reinstall-package mflux "mflux @ git+{{ mflux_repo }}@main"
     @just mflux-version
+    @just mflux-restart
 
 # Install mflux from a pull request, e.g. just mflux-pr 886
 mflux-pr number:
     uv pip install --python {{ python }} --reinstall-package mflux "mflux @ git+{{ mflux_repo }}@refs/pull/{{ number }}/head"
     @just mflux-version
+    @just mflux-restart
 
 # Go back to the locked mflux from PyPI
 mflux-reset:
     uv sync --locked --reinstall-package mflux
     @just mflux-version
+    @just mflux-restart
+
+# Restart the LaunchAgent so the server uses the new mflux. Does nothing when the service is not installed.
+mflux-restart:
+    @if {{ python }} -c 'from mlx_imagine import service; raise SystemExit(0 if service.plist_path().exists() else 1)'; then uv run mlx-imagine --config {{ config }} service restart; else echo "The LaunchAgent is not installed. No restart."; fi
 
 # Show the installed mflux version and where it came from
 mflux-version:
