@@ -192,9 +192,9 @@ def build_mcp(engine: Engine) -> Any:
     # -- LoRA files -------------------------------------------------------------------------------------------
 
     @mcp.tool(annotations=_annotations(**READ_ONLY))
-    def list_loras() -> list[dict[str, Any]]:
+    def list_loras() -> dict[str, Any]:
         """The LoRA files in the LoRA directory. Use a name in the `loras` argument of load_model."""
-        return engine.list_loras()
+        return {"directory": str(engine.lora_dir), "loras": engine.list_loras()}
 
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=True))
     async def download_lora(

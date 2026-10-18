@@ -176,7 +176,7 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
     @app.get("/v1/loras")
     def list_loras() -> dict[str, Any]:
-        return {"loras": engine.list_loras()}
+        return {"directory": str(engine.lora_dir), "loras": engine.list_loras()}
 
     @app.post("/v1/loras/downloads", status_code=202)
     def download_lora(

@@ -204,6 +204,15 @@ class Engine:
             "queue_length": len(self.queue.waiting()),
             "memory": self.memory(),
             "restart_required": bool(self.restart_required),
+            # What the config allows, so a client does not find out from a refused call.
+            "permissions": {
+                "hf_access": self.settings.hf_allow_access,
+                "model_download": self.settings.hf_allow_model_download,
+                "download_needs_confirm": self.settings.hf_require_model_confirmation,
+                "model_delete": self.settings.mflux_allow_delete and self.settings.hf_allow_delete,
+                "lora_delete": self.settings.lora_allow_delete,
+            },
+            "lora_directory": str(self.lora_dir),
         }
 
     def _hub_repos_in_use(self) -> set[str]:
@@ -702,7 +711,11 @@ class Engine:
         if not self.settings.hf_allow_access:
             raise disabled("huggingface_models.allow_hf_access is false.")
         if not self.settings.hf_allow_model_download:
-            raise disabled("huggingface_models.allow_model_download is false.")
+            raise disabled(
+                "huggingface_models.allow_model_download is false. This setting also blocks a LoRA download. "
+                f"To get this file, copy it into {self.lora_dir} (the LoRA directory), "
+                "or ask the server owner to set the setting to true."
+            )
         repo_id, filename = lora_files.check_download(repo_id, filename)
         name = lora_files.target_name(repo_id, filename)
         if (self.lora_dir / name).exists():

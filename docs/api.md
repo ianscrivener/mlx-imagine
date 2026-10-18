@@ -202,11 +202,21 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
     "mlx_memory_limit_gb": 30.0,
     "mlx_cache_limit_gb": 2.0
   },
-  "restart_required": false
+  "restart_required": false,
+  "permissions": {
+    "hf_access": true,
+    "model_download": false,
+    "download_needs_confirm": true,
+    "model_delete": true,
+    "lora_delete": true
+  },
+  "lora_directory": "/Users/me/mlx-imagine/loras"
 }
 ```
 
 `restart_required` is `true` after a change to a setting that needs a restart (3.3).
+
+`permissions` shows what the config allows, so a client does not learn about a block from a refused call. `model_download` is `huggingface_models.allow_model_download`. It also controls the LoRA download (4.6). `lora_directory` is the folder for LoRA files.
 
 ### 3.3 Configuration
 
@@ -487,7 +497,7 @@ The LoRA files are in `loras.local_directory`. A LoRA name is the path of the fi
 
 | Method and path | Description |
 |---|---|
-| `GET /v1/loras` | List the LoRA files: `{"loras": [{"name", "size_mb"}]}`. |
+| `GET /v1/loras` | List the LoRA files: `{"directory", "loras": [{"name", "size_mb"}]}`. `directory` is the LoRA directory. |
 | `POST /v1/loras/downloads` | Download one file from a Hugging Face repository. Makes a `lora_download` job. |
 | `DELETE /v1/loras/{name}?confirm=true` | Delete a LoRA file. |
 
@@ -499,7 +509,7 @@ The LoRA files are in `loras.local_directory`. A LoRA name is the path of the fi
 
 - `repo_id` is `owner/name`. `filename` is one `.safetensors` file inside the repository, in the top folder or in one subfolder. It has no wildcard.
 - The server saves the file as `owner--name/<filename>` in the LoRA directory. It downloads only that file. If the file exists already, the server returns `name_in_use`.
-- The download follows `huggingface_models.allow_hf_access`, `allow_model_download` and `require_model_confirmation`. With confirmation on, the server returns `confirm_required` and the size.
+- The download follows `huggingface_models.allow_hf_access`, `allow_model_download` and `require_model_confirmation`. When `allow_model_download` is false, the answer is `operation_disabled`. It names the LoRA directory, where a client can put the file. With confirmation on, the server returns `confirm_required` and the size.
 - A delete needs `confirm=true`. It returns `operation_disabled` when `loras.allow_delete` is false, and `lora_in_use` when the loaded model, the target model or a queued load uses the file.
 - The server never passes a Hugging Face name or a client path to mflux. A client applies a LoRA only through a file in the LoRA directory.
 

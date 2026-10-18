@@ -155,3 +155,17 @@ def test_a_download_needs_confirm_when_the_setting_asks_for_it(engine: Engine, c
     engine.settings.hf_require_model_confirmation = True
     response = client.post("/v1/loras/downloads", json={"repo_id": "owner/name", "filename": "a.safetensors"})
     assert response.status_code == 409 and response.json()["error"]["code"] == "confirm_required"
+
+
+def test_a_refused_lora_download_says_where_to_put_the_file_and_status_shows_the_permissions(
+    engine: Engine, client: TestClient
+) -> None:
+    """Bug: an agent gets "allow_model_download is false" for a LoRA, with no way to continue, and learns about the
+    block only from a refused call."""
+    engine.settings.hf_allow_model_download = False
+    status = client.get("/v1/server").json()
+    assert status["permissions"]["model_download"] is False and status["lora_directory"] == str(engine.lora_dir)
+    response = client.post("/v1/loras/downloads", json={"repo_id": "owner/name", "filename": "a.safetensors"})
+    message = response.json()["error"]["message"]
+    assert response.status_code == 403 and "LoRA download" in message and str(engine.lora_dir) in message
+    assert client.get("/v1/loras").json()["directory"] == str(engine.lora_dir)
