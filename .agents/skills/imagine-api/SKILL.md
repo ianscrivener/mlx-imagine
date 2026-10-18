@@ -39,6 +39,23 @@ description: Use a running mlx-imagine server to make images. Covers the models,
 1. Upload the image: `POST /v1/uploads` (multipart field `file`). It returns `upload_id`.
 2. Send `image_path: "<upload_id>"` and `image_strength` in the generate request. A higher `image_strength` keeps more of the input image.
 
+## LoRA files
+
+1. List the LoRA files: `GET /v1/loras` (MCP: `list_loras`). A name is a path inside the LoRA directory.
+2. Apply LoRAs at load: `POST /v1/model/load` with `"loras": [{"name": "style.safetensors", "scale": 0.8}]`. To change the LoRAs, load again. A model with `capabilities.supports_lora` false returns `lora_not_supported`.
+3. Do not send the options `lora`, `lora_paths` or `lora_style`. The server blocks them.
+4. Download a file from Hugging Face: `POST /v1/loras/downloads` with `repo_id` and `filename` (MCP: `download_lora`). Ask the user first. Delete: `DELETE /v1/loras/<name>?confirm=true` (MCP: `delete_lora`).
+
+## Input and output folders
+
+- `output_subdir` in the generate request puts the images in a folder of the output directory.
+- `input_subdir` makes a relative `image_path` read from a folder of the input directory. `POST /v1/uploads?subdir=<folder>` saves an upload there.
+- A name is a relative path of at most 3 folder names. A name with `..`, a leading `/` or a hidden folder returns an error.
+
+## One server
+
+Only one server runs for each user. If `mlx-imagine serve` stops with "A server already runs", use that server (the error gives the PID). `mlx-imagine mcp` is a stdio client for it. It starts no server.
+
 ## Manage models
 
 | Task | REST | MCP |

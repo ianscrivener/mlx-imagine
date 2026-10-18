@@ -48,6 +48,9 @@ jobs:
       - name: Lint the docs (ASD-STE100)
         run: just dev-docs
 
+      - name: Check for stray tracked files
+        run: just dev-stray
+
   tests:
     if: github.event_name != 'schedule'
     runs-on: macos-15  # Apple Silicon: mlx has no wheel for the other runners

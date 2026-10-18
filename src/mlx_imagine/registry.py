@@ -92,6 +92,8 @@ ADAPTER_COMMANDS: tuple[CommandSpec, ...] = (
                 f"{_M}.flux3.weights.flux3_weight_definition.Flux3KleinWeightDefinition"),
     CommandSpec("flux2", "mflux-generate-flux2", f"{_A}.flux2", "Flux2KleinCommand",
                 f"{_M}.flux2.weights.flux2_weight_definition.Flux2KleinWeightDefinition"),
+    CommandSpec("qwen21", "mflux-generate-qwen-2.1", f"{_A}.qwen21", "Qwen21Command",
+                f"{_M}.qwen21.weights.qwen21_weight_definition.Qwen21WeightDefinition"),
 )  # fmt: skip
 
 # No command is in stage 2 now. ControlNet is a non-goal (NON-GOALS.md).

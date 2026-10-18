@@ -7,6 +7,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 
 class ServerRunning(Exception):
@@ -51,8 +52,8 @@ class ServerLock:
             self._fd = None
 
 
-def running_address(path: Path | None = None) -> str | None:
-    """The address of the server that holds the lock, or None when no server runs."""
+def owner(path: Path | None = None) -> dict[str, Any] | None:
+    """{"pid", "address"} of the server that holds the lock, or None when no server runs."""
     path = path or lock_path()
     try:
         fd = os.open(path, os.O_RDONLY)
@@ -62,10 +63,17 @@ def running_address(path: Path | None = None) -> str | None:
         try:
             fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
         except OSError:
-            return _read_owner(fd)[1]  # the lock is taken: a server runs
+            pid, address = _read_owner(fd)  # the lock is taken: a server runs
+            return {"pid": pid, "address": address}
         return None
     finally:
         os.close(fd)
+
+
+def running_address(path: Path | None = None) -> str | None:
+    """The address of the server that holds the lock, or None when no server runs."""
+    found = owner(path)
+    return found["address"] if found else None
 
 
 def _read_owner(fd: int) -> tuple[int | None, str | None]:

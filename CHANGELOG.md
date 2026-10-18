@@ -12,6 +12,10 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Added
 
+- An adapter for Qwen-Image 2.1 and Qwen-Image 2.1 Turbo (`adapters/qwen21.py`).
+- `mlx-imagine service status` shows `lock_owner`: the PID and address of the server that holds the lock.
+- `just dev-stray` and a CI step that fail when git tracks a scratch file, a weight file or a log.
+- The real-weight step `lora` in `scripts/real/suite.py`. It takes `LORAS`, `LORA_BASE_MODEL`, `LORA_QUANTIZE`, `LORA_SCALE` and `LORA_STEPS` from the environment.
 - The generate options `input_subdir` and `output_subdir`, and `subdir` for `POST /v1/uploads`. They name a folder inside the input or output directory for one request.
 - LoRA: `GET /v1/loras`, `POST /v1/loras/downloads`, `DELETE /v1/loras/{name}`, the MCP tools `list_loras`, `download_lora` and `delete_lora`, and the `loras` field of the load request. The setting `loras.local_directory` holds the files.
 - Adapters for mflux models that have no command steps. The adapters run FLUX 3 Image Klein and FLUX.2 Klein.

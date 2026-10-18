@@ -192,7 +192,7 @@ These problems apply to A and C:
 1. `argparse` calls `sys.exit()` when an option is not correct. The server must catch `SystemExit` and return HTTP 422.
 2. Some CLI options are not safe or have no meaning in a server. Examples are `--output`, `--prompt-file`, `--config-from-metadata`, `--stepwise-image-output-dir`, `--battery-percentage-stop-limit` and `--model-path` outside the model directory. mlx-imagine needs a list of blocked options.
 3. Some options change which model loads, for example `--model`, `--quantize`, `--base-model` and `--low-ram`. These belong to the load request, not to the generate request.
-4. The parser resolves LoRA names when it parses, and this can download a LoRA. LoRA is in stage 2, so stage 1 blocks the LoRA options.
+4. The parser resolves LoRA names when it parses, and this can download a LoRA. The server blocks the LoRA options. A load request uses the field `loras`, which names files in the LoRA directory (api.md 4.6).
 5. `--seed` takes a list. **Decided:** one request can make many images, one for each seed. The server runs them as one job and loads the model once. The job result lists all images. A cancel stops the images that are not complete. The images that are complete stay on disk.
 
 Decision: C. One generic `generate` operation takes the CLI option names. `GET /models/{name}/schema` returns the generated schema for the loaded model. The MCP server has one `generate` tool for each supported model, each with its generated `inputSchema`. This gives agents a clear schema without code that drifts from mflux.
@@ -259,8 +259,8 @@ Because of fact 4, a directory change at runtime is not reliable.
 
 ### 3.14 MCP design
 
-- Run the MCP server in the same process. It uses the same job queue and the same loaded model.
-- Support stdio (for Claude Desktop and Claude Code) and Streamable HTTP.
+- Run the MCP server in the same process as the REST API. It uses the same job queue and the same loaded model.
+- **Decided:** only one server runs for each user. Streamable HTTP at `/mcp` is the main transport. `mlx-imagine mcp` is a stdio client with no engine: it passes the messages to `/mcp` of the server that runs, for clients that support only stdio. The server takes a lock file at start, so a second server cannot run (docs/mcp.md).
 - MCP tools: one tool for each operation in 1.2, plus `get_job` and `cancel_job`.
 - Delete tools need an explicit `confirm` argument. MCP tool annotations mark them as destructive.
 
@@ -289,7 +289,7 @@ Because of fact 4, a directory change at runtime is not reliable.
 
 Stage 1 does not include these. They are in stage 2:
 
-- LoRA files (list, download, apply at generation).
+- Nothing is left in stage 2. LoRA files (list, download, apply at load) are done.
 
 Out of scope (see [NON-GOALS.md](NON-GOALS.md)):
 
@@ -333,7 +333,7 @@ Size: medium.
 
 ### Phase 3: MCP server
 
-- MCP tools on top of the server core. Support stdio and Streamable HTTP.
+- MCP tools on top of the server core. Streamable HTTP, and a stdio client for the server that runs (3.14).
 
 Size: small. Most logic is in Phase 1.
 
@@ -348,7 +348,7 @@ Size: medium.
 
 ### Stage 2
 
-- LoRA: list, download and apply at generation. Allow the LoRA options again (3.6).
+- LoRA: list, download and apply at load (done).
 
 Size: medium.
 

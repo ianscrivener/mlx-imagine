@@ -90,3 +90,16 @@ def test_stop_reports_a_server_that_does_not_exit(launchctl, tmp_path, monkeypat
     service.install(tmp_path / "config.toml", home=tmp_path)
     with pytest.raises(service.ServiceError, match="did not stop"):
         service.stop(home=tmp_path)  # the fake `print` always says the job is loaded
+
+
+def test_status_shows_the_server_that_holds_the_lock(launchctl, tmp_path) -> None:
+    """Bug: status shows no PID for a server that was not started by the LaunchAgent, so a user cannot find the
+    process that blocks a second start."""
+    from mlx_imagine.lock import ServerLock, lock_path
+
+    assert service.status("http://127.0.0.1:1/v1/health", home=tmp_path)["lock_owner"] is None
+    held = ServerLock(lock_path(tmp_path))
+    held.acquire("http://127.0.0.1:8765")
+    owner = service.status("http://127.0.0.1:1/v1/health", home=tmp_path)["lock_owner"]
+    held.release()
+    assert owner["address"] == "http://127.0.0.1:8765" and isinstance(owner["pid"], int)

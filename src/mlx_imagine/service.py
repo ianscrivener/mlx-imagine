@@ -13,6 +13,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from . import lock
+
 LABEL = "io.github.ianscrivener.mlx-imagine"
 # launchd waits this many seconds before it starts a server that exited again. Without it, a server that
 # fails at start (for example, out of memory) starts again and again.
@@ -161,6 +163,7 @@ def status(health_url: str, home: Path | None = None) -> dict[str, Any]:
         "state": state,
         "pid": pid,
         "healthy": _healthy(health_url),
+        "lock_owner": lock.owner(lock.lock_path(home)),
         "logs": str(log_dir(home)),
     }
 

@@ -3,6 +3,8 @@
 import asyncio
 import json
 
+import pytest
+
 from mlx_imagine.engine import Engine
 from mlx_imagine.mcp_server import build_mcp
 
@@ -71,3 +73,40 @@ def test_a_slow_generate_returns_the_job_and_a_get_job_hint_within_the_wait_cap(
         assert "get_job" in content[1].text and job["id"] in content[1].text
     finally:
         FakeModel.release.set()
+
+
+def _call(mcp, name: str, arguments: dict):
+    result = asyncio.run(mcp.call_tool(name, arguments))
+    content = result.content if hasattr(result, "content") else result[0]
+    return json.loads(content[0].text)
+
+
+def test_the_lora_tools_list_delete_and_load(engine: Engine) -> None:
+    """Bug: an MCP tool for LoRA is missing, a delete runs without confirm, or load_model drops `loras`."""
+    tools = _tools(engine)
+    assert {"list_loras", "download_lora", "delete_lora"} <= tools.keys()
+    assert tools["delete_lora"].annotations.destructive_hint is True
+    assert "confirm" in tools["delete_lora"].input_schema["required"]
+    assert tools["list_loras"].annotations.read_only_hint is True
+    assert "loras" in tools["load_model"].input_schema["properties"]
+
+    path = engine.lora_dir / "style.safetensors"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"x")
+    mcp = build_mcp(engine)
+    listed = asyncio.run(mcp.call_tool("list_loras", {}))
+    assert "style.safetensors" in json.dumps(
+        listed.structured_content if hasattr(listed, "structured_content") else listed
+    )
+
+    job = _call(
+        mcp,
+        "load_model",
+        {"model": "z-image-turbo", "loras": [{"name": "style.safetensors", "scale": 0.5}], "wait_seconds": 10},
+    )
+    assert job["state"] == "succeeded", job["error"]
+    assert engine.loaded.spec.loras == [{"name": "style.safetensors", "scale": 0.5}]
+
+    with pytest.raises(Exception, match="lora_in_use|confirm_required"):
+        asyncio.run(mcp.call_tool("delete_lora", {"name": "style.safetensors", "confirm": True}))
+    assert path.exists()

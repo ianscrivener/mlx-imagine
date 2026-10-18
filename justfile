@@ -22,7 +22,7 @@ default:
     @just --list --unsorted
 
 # Run the dev checks in one go: lint, format check, type check, docs lint, justfile format
-dev: dev-lint dev-format-check dev-types dev-docs justfile-check
+dev: dev-lint dev-format-check dev-types dev-docs dev-stray justfile-check
 
 # Run every check before a commit: the dev checks, then the tests
 dev-check: dev test
@@ -30,6 +30,10 @@ dev-check: dev test
 # Lint the Markdown docs and the skills with the ASD-STE100 linter
 dev-docs:
     python3 {{ ste_lint }} README.md AGENTS.md CHANGELOG.md docs/*.md docs/development/*.md .agents/skills/imagine-*/SKILL.md .github/pull_request_template.md
+
+# Fail when git tracks a file that does not belong in the repository (scratch files, weights, logs)
+dev-stray:
+    @bad=$(git ls-files | grep -E '(^|/)(z-tmp[^/]*|\.DS_Store|[^/]*\.excalidraw|[^/]*\.safetensors|[^/]*\.log)$|^\.real-logs' || true); if [ -n "$bad" ]; then echo "Tracked files that do not belong here:"; echo "$bad"; exit 1; fi
 
 # Format with ruff and apply the safe lint fixes
 dev-fix:

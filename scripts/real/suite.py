@@ -1,7 +1,8 @@
 """Real-weight checks against a running mlx-imagine. Each check prints one PASS or FAIL line.
 
 Usage: suite.py STEPS MODEL IMAGE [URL]
-  STEPS  comma-separated: load,seeds,cancel,img2img,mcp,lowram,save,unload,cycles
+  STEPS  comma-separated: load,seeds,cancel,img2img,mcp,lowram,save,unload,cycles,lora
+  LORAS  (step lora) comma-separated LoRA names in the LoRA directory; LORA_QUANTIZE and LORA_BASE_MODEL are load fields, LORA_SCALE and LORA_STEPS tune the run
   MODEL  a saved model name in mflux_models.local_directory, or a registry name
   IMAGE  a PNG for the img2img step
 
@@ -9,6 +10,7 @@ This loads real weights. Run it only through scripts/real/run.sh (just test-real
 watchdog first."""
 
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -240,6 +242,60 @@ def step_cycles() -> None:
     )
 
 
+LORA_REQUEST = {"prompt": "close-up portrait photo of a woman, natural light, film grain", "seed": [7], "steps": 12}
+
+
+def _lora_image(loras: list[str] | None) -> tuple[dict, str | None]:
+    """Load MODEL with the LoRAs (or none), make one image with a fixed seed. Returns the job and the image path."""
+    request: dict[str, Any] = {"model": MODEL}
+    if os.environ.get("LORA_QUANTIZE"):  # not for a saved model, which is quantized already
+        request["quantize"] = int(os.environ["LORA_QUANTIZE"])
+    if os.environ.get("LORA_BASE_MODEL"):
+        request["base_model"] = os.environ["LORA_BASE_MODEL"]
+    if loras:
+        scale = float(os.environ.get("LORA_SCALE", "1.0"))
+        request["loras"] = [{"name": name, "scale": scale} for name in loras]
+    job = submit("/v1/model/load", request)
+    if job["state"] != "succeeded":
+        return job, None
+    steps = int(os.environ.get("LORA_STEPS", LORA_REQUEST["steps"]))
+    job = submit("/v1/generate", {**LORA_REQUEST, "steps": steps, "width": 768, "height": 768})
+    found = images(job)
+    return job, found[0]["path"] if found else None
+
+
+def step_lora() -> None:
+    """Each LoRA must change the image: the same seed with the LoRA must differ from the image without it."""
+    from PIL import Image, ImageChops, ImageStat
+
+    names = [name for name in os.environ.get("LORAS", "").split(",") if name]
+    if not names:
+        report("lora", False, "Set LORAS to a comma-separated list of LoRA names.")
+        return
+    listed = {item["name"] for item in api("GET", "/v1/loras")["loras"]}
+    missing = [name for name in names if name not in listed]
+    report("lora list", not missing, f"missing={missing}" if missing else f"{len(names)} LoRAs listed")
+    if missing:
+        return
+    job, base = _lora_image(None)
+    report("lora baseline", base is not None, f"{base} err={job['error']}")
+    if base is None:
+        return
+    for name in names:
+        started = time.time()
+        job, path = _lora_image([name])
+        if path is None:
+            report(f"lora {name}", False, f"state={job['state']} err={job['error']}")
+            continue
+        with Image.open(base).convert("RGB") as plain, Image.open(path).convert("RGB") as styled:
+            difference = sum(ImageStat.Stat(ImageChops.difference(plain, styled)).mean) / 3
+        report(
+            f"lora {name}",
+            difference > 1.0,
+            f"{time.time() - started:.0f}s mean pixel difference {difference:.1f} of 255, image {path}",
+        )
+
+
 STEP_FUNCTIONS = {
     "load": step_load,
     "seeds": step_seeds,
@@ -250,6 +306,7 @@ STEP_FUNCTIONS = {
     "save": step_save,
     "unload": step_unload,
     "cycles": step_cycles,
+    "lora": step_lora,
 }
 
 for name in STEPS:
