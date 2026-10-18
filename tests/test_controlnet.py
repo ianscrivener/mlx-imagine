@@ -52,6 +52,15 @@ def test_the_turbo_model_refuses_guidance_above_one() -> None:
         adapter.Qwen21ControlnetCommand.validate(args)
 
 
+def test_guidance_below_one_is_refused_before_the_job_starts() -> None:
+    """Bug: the generate job fails after it started, because mflux refuses guidance below 1."""
+    with pytest.raises(ModelConfigError, match="at least 1"):
+        _validate("--controlnet-image-path", "c.png", "--guidance", "0.5")
+    with pytest.raises(ModelConfigError, match="at least 1"):
+        _validate("--controlnet-image-path", "c.png", "--guidance", "inf")
+    _validate("--controlnet-image-path", "c.png", "--guidance", "3")
+
+
 def test_the_control_image_and_the_mask_resolve_inside_the_input_directory(tmp_path) -> None:
     """Bug: a client reads any file on the Mac through controlnet_image_path or mask_image."""
     input_dir = tmp_path / "input"

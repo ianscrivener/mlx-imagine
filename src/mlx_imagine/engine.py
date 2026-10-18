@@ -648,7 +648,7 @@ class Engine:
         try:
             with PIL.Image.open(image_file) as source, PIL.Image.open(mask_file) as raw_mask:
                 picture = PIL.ImageOps.exif_transpose(source).convert("RGB")
-                mask = raw_mask.convert("L").resize(picture.size)
+                mask = PIL.ImageOps.exif_transpose(raw_mask).convert("L").resize(picture.size)
         except OSError:
             raise invalid_request("The image or the mask is not a readable image.") from None
         red = PIL.Image.new("RGB", picture.size, (255, 0, 0))

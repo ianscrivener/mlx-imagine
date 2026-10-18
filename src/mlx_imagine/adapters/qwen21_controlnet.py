@@ -64,6 +64,9 @@ class Qwen21ControlnetCommand:
                 raise ModelConfigError(f"Qwen-Image-2.1-Turbo runs without CFG. Use guidance 1, got {args.guidance}.")
             if args.scheduler == "viggle_turbo":
                 raise ModelConfigError("viggle_turbo is the schedule of a LoRA for the base Qwen-Image-2.1.")
+        # generate_image() raises ValueError for this, after the job started. Refuse it now.
+        if args.guidance is not None and not 1 <= args.guidance < float("inf"):
+            raise ModelConfigError("guidance must be finite and at least 1.")
         return model_config
 
     @staticmethod

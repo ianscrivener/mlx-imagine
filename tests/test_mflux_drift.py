@@ -32,6 +32,11 @@ PINNED = {
     "qwen21_controlnet_generate.main": (qwen21_controlnet_generate.main, "c4f70aeb80940255"),
     # adapters/zimage_controlnet.py copies the statements of this main().
     "z_image_turbo_generate_controlnet.main": (z_image_turbo_generate_controlnet.main, "2b3d1e8a42120036"),
+    # The adapter calls this private function to parse the --control specs.
+    "ZImageTurboControlnetCommand._parse_controls": (
+        z_image_turbo_generate_controlnet.ZImageTurboControlnetCommand._parse_controls,
+        "a3231d0ab084d2ba",
+    ),
     # engine.save_image calls these two private functions to write EXIF and the metadata dictionary.
     "ImageUtil._embed_metadata": (ImageUtil._embed_metadata, "49ba7e90356b7792"),
     "GeneratedImage._get_metadata": (GeneratedImage._get_metadata, "511107ee1fe28b99"),
