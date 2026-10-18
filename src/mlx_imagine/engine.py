@@ -410,6 +410,7 @@ class Engine:
 
     def submit_load(self, request: dict[str, Any]) -> Job:
         load_spec = self.build_load_spec(request)
+        self._check_cached(load_spec)  # rule 10: fail now, not after the job waited in the queue
         job = Job("load", load_spec.request, lambda job: self._do_load(job, load_spec))
         job.context["load_spec"] = load_spec
         return self.queue.submit(job, before_queue=lambda: setattr(self, "target", load_spec))
@@ -465,10 +466,32 @@ class Engine:
             return
         complete = hf_models.is_complete(load_spec.entry)
         if complete is False:
-            raise not_found(
-                f"{load_spec.entry.hf_repo} is not complete in the Hugging Face cache. Send a download request first.",
-                model=load_spec.entry.name,
+            local = self._local_copies(load_spec.entry)
+            hint = (
+                f" Or load a saved model of it: {', '.join(local)} (give base_model {load_spec.entry.name!r})."
+                if local
+                else ""
             )
+            raise not_found(
+                f"{load_spec.entry.hf_repo} is not complete in the Hugging Face cache. "
+                f"Send a download request first.{hint}",
+                model=load_spec.entry.name,
+                saved_models=local,
+            )
+
+    def _local_copies(self, entry: ModelEntry) -> list[str]:
+        """Names of the saved models in the mflux directory that are copies of this model: the sidecar names it,
+        or the folder is the repository name with a suffix such as -mflux-q8."""
+        prefix = entry.hf_repo.replace("/", "--").lower()
+        found = []
+        for saved in saved_models.list_models(self.models_dir):
+            name = saved["name"].lower()
+            same_repo = name == prefix or (
+                name.startswith(prefix + "-") and name[len(prefix) + 1 :].startswith("mflux")
+            )
+            if saved.get("base_model") == entry.name or (saved.get("base_model") is None and same_repo):
+                found.append(saved["name"])
+        return found
 
     def _check_memory(self, load_spec: LoadSpec) -> None:
         need = self._estimate_bytes(load_spec)

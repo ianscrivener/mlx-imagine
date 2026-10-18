@@ -328,3 +328,22 @@ def test_the_loaded_model_reports_its_capabilities(engine: Engine) -> None:
     caps = engine.loaded.to_dict()["capabilities"]
     assert caps["supports_guidance"] is False and caps["supports_negative_prompt"] is False
     assert caps["default_steps"] and "txt2img" in caps["modes"]
+
+
+def test_a_load_of_an_incomplete_model_fails_at_once_and_names_the_saved_copy(engine, monkeypatch) -> None:
+    """Bug: the load job waits in the queue and then fails with "send a download request", and the client does not
+    learn that a saved copy of the model is on this Mac."""
+    from mlx_imagine import hf_models
+    from mlx_imagine.errors import ApiError
+
+    monkeypatch.setattr(hf_models, "is_complete", lambda entry: False)
+    saved = engine.models_dir / "Tongyi-MAI--Z-Image-Turbo-mflux-q8"
+    saved.mkdir(parents=True)
+    (saved / "model.safetensors.index.json").write_text("{}")
+    (saved / "transformer").mkdir()
+    (saved / "transformer" / "model.safetensors.index.json").write_text("{}")
+    with pytest.raises(ApiError) as error:
+        engine.submit_load({"model": "z-image-turbo"})
+    assert error.value.code == "not_found"
+    assert "Tongyi-MAI--Z-Image-Turbo-mflux-q8" in error.value.message and "base_model" in error.value.message
+    assert not engine.queue.waiting()

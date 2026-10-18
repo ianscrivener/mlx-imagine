@@ -35,7 +35,8 @@ def build_parser() -> CommandLineParser:
         "server_notes",
         "Without image_paths this model makes an image from the prompt. With image_paths it edits: give 1 to 10 "
         "reference images in order. The prompt refers to them as <image1>, <image2>, and so on. The last image "
-        "sets the size of the result when you give no width and height. Add mask_image to repaint only part of "
+        "sets the size of the result when you give no width and height. To keep the size of the first image, "
+        "give its width and height (upload_image returns them). Add mask_image to repaint only part of "
         "the first image. strength below 1 keeps more of the first image. To change a person or a style, load "
         "the model with a LoRA that fits Qwen-Image 2.1 (see list_loras and load_model).",
     )

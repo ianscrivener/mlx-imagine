@@ -39,7 +39,7 @@ def test_a_generate_call_loads_the_model_and_returns_the_image(engine: Engine) -
     content = result.content if hasattr(result, "content") else result[0]
     job = json.loads(content[0].text)
     assert job["state"] == "succeeded", job["error"]
-    assert content[1].type == "image" and content[1].mime_type == "image/png"
+    assert content[1].type == "image" and content[1].mime_type == "image/jpeg"
 
 
 def test_set_config_changes_the_live_queue_like_the_rest_route(engine: Engine) -> None:
@@ -175,3 +175,29 @@ def test_a_client_can_learn_the_controlnet_workflow_from_the_mcp_alone(settings)
     zimage = tools["generate_z_image_turbo_controlnet_union_2_1"]
     assert "canny" in zimage.input_schema["properties"]["control"]["description"]
     assert "upload_image" in zimage.description
+
+
+def test_a_generate_result_gives_a_small_preview_and_not_the_full_image(engine: Engine, tmp_path) -> None:
+    """Bug: get_job returns a multi-megabyte PNG as base64, and an MCP client refuses a result of that size."""
+    import base64
+    import io
+
+    import numpy as np
+    import PIL.Image
+
+    from mlx_imagine.jobs import SUCCEEDED, Job
+
+    x, y = np.meshgrid(np.linspace(0, 40, 2000), np.linspace(0, 30, 1500))
+    smooth = ((np.sin(x) * np.cos(y) + 1) * 127).astype(np.uint8)
+    noise = np.random.default_rng(1).integers(0, 40, (1500, 2000), dtype=np.uint8)
+    path = tmp_path / "big.png"
+    PIL.Image.fromarray(np.stack([smooth, smooth // 2 + noise, 255 - smooth], axis=-1)).save(path)
+    assert path.stat().st_size > 1_000_000
+    done = Job("generate", {}, lambda job: None)
+    done.state, done.result = SUCCEEDED, {"images": [{"path": str(path)}]}
+    engine.queue._jobs[done.id] = done  # ty: ignore[unresolved-attribute]
+    result = asyncio.run(build_mcp(engine).call_tool("get_job", {"job_id": done.id}))
+    content = result.content if hasattr(result, "content") else result[0]
+    picture = next(item for item in content if item.type == "image")
+    image = PIL.Image.open(io.BytesIO(base64.b64decode(picture.data)))
+    assert max(image.size) <= 1024 and len(picture.data) < 400_000 and picture.mime_type == "image/jpeg"

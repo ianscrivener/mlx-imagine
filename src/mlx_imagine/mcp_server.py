@@ -18,6 +18,7 @@ from .options import schemas
 # seconds, although the server sent progress notifications, so a tool never waits longer than MAX_WAIT.
 DEFAULT_GENERATE_WAIT = 45
 MAX_WAIT = 55
+PREVIEW_PIXELS = 1024
 READ_ONLY = {"read_only_hint": True, "open_world_hint": False}
 DESTRUCTIVE = {"destructive_hint": True, "open_world_hint": False}
 
@@ -84,6 +85,20 @@ def build_mcp(engine: Engine) -> Any:
             job.unsubscribe(subscriber)
         return engine.queue.describe(job)
 
+    def preview(path: str) -> Any:
+        """The image as a JPEG of at most 1024 pixels. A full PNG can be 2 MB or more, and an MCP client can refuse
+        a result of that size. The job result has the path of the full image."""
+        import io
+
+        import PIL.Image
+
+        with PIL.Image.open(path) as source:
+            small = source.convert("RGB")
+            small.thumbnail((PREVIEW_PIXELS, PREVIEW_PIXELS))
+        buffer = io.BytesIO()
+        small.save(buffer, "JPEG", quality=85)
+        return Image(data=buffer.getvalue(), format="jpeg")
+
     def job_content(described: dict[str, Any], with_images: bool) -> list[Any]:
         content: list[Any] = [json.dumps(described)]
         if described["state"] in ("queued", "running"):
@@ -92,7 +107,7 @@ def build_mcp(engine: Engine) -> Any:
                 f"Set wait_seconds (up to {MAX_WAIT}) to wait for it."
             )
         if with_images and described["state"] == SUCCEEDED and described["type"] == "generate":
-            content += [Image(path=item["path"]) for item in (described["result"] or {}).get("images", [])]
+            content += [preview(item["path"]) for item in (described["result"] or {}).get("images", [])]
         return content
 
     # -- server and models -------------------------------------------------------------------------------------
@@ -239,7 +254,8 @@ def build_mcp(engine: Engine) -> Any:
 
     @mcp.tool(annotations=_annotations(**READ_ONLY), structured_output=False)
     async def get_job(job_id: str, ctx: Context, wait_seconds: float = 0) -> list[Any]:
-        """Get a job. A generate job that succeeded also returns its images."""
+        """Get a job. A generate job that succeeded also returns a preview of each image (JPEG, 1024 pixels at most).
+        The full image is the path in the job result."""
         job = call(engine.queue.get, job_id)
         return job_content(await wait(job, wait_seconds, ctx), with_images=True)
 

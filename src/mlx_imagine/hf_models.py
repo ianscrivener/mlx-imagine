@@ -89,9 +89,12 @@ def entry_for_cache(registry: Registry, entry: ModelEntry) -> dict[str, Any]:
 
 
 def _progress_class(job: Job) -> type:
+    import io
+
     class JobProgress(tqdm_auto):  # ty: ignore[unsupported-base]
         def __init__(self, *args: Any, **kwargs: Any) -> None:
-            kwargs["disable"] = True
+            # Not disabled: a disabled tqdm sets no `unit` and does not count. The bar writes to a buffer.
+            kwargs["file"] = io.StringIO()
             super().__init__(*args, **kwargs)
 
         def update(self, n: float | None = 1) -> bool | None:

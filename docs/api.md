@@ -563,7 +563,7 @@ Rules:
 
 - If a model is loaded, the load job unloads it first.
 - The job checks the free memory before it loads. If the check fails, the job fails with `insufficient_memory`. The old model is then already unloaded.
-- The load job does not download. If the model is not in the Hugging Face cache, the job fails with `not_found`. Send a download request first.
+- The load job does not download. If the model is not complete in the Hugging Face cache, the load request returns `not_found` at once. Send a download request first. The message names the saved models in the mflux directory that are copies of the model. A load request for one of them needs `base_model`.
 
 Low-RAM mode (scope 3.8):
 
@@ -726,7 +726,7 @@ Agents work better with one call that returns the images. The tools that make a 
 
 - Default: `45` for generate tools, `0` for the other tools. A tool waits at most `55` seconds, and a larger `wait_seconds` is cut to `55`. Each MCP host ends a tool call at its own limit. Claude Code failed a call at about 60 seconds.
 - The tool sends MCP progress notifications while it waits.
-- If the job ends in the wait time, the tool returns the result. A generate tool also returns each image as MCP image content.
+- If the job ends in the wait time, the tool returns the result. A generate tool also returns each image as MCP image content. This is a JPEG preview of at most 1024 pixels, because a full PNG can be too large for an MCP client. The `path` in the job result is the full image.
 - If the job does not end in the wait time, the tool returns the job object. It also returns a text that tells the agent to call `get_job` with the job ID. The job continues on the server.
 
 ## 7. Command line

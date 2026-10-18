@@ -63,3 +63,14 @@ def test_the_limit_shows_in_the_server_state_and_a_bad_value_is_refused(engine: 
             engine.update_settings({"huggingface_models": {"max_download_model_size_gb": bad}})
     engine.update_settings({"huggingface_models": {"max_download_model_size_gb": 2}})
     assert engine.settings.hf_max_download_gb == 2
+
+
+def test_the_progress_hook_of_a_download_counts_and_reports(engine: Engine) -> None:
+    """Bug: the progress class of a download raised AttributeError 'unit', so the job failed although the file
+    was complete."""
+    from mlx_imagine.jobs import Job
+
+    job = Job("download", {}, lambda job: None)
+    bar = hf_models._progress_class(job)(total=1000, unit="B", desc="a.safetensors")
+    bar.update(400)
+    assert job.progress["bytes_done"] == 400 and job.progress["bytes_total"] == 1000
