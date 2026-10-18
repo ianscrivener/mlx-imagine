@@ -207,6 +207,7 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
     "hf_access": true,
     "model_download": false,
     "download_needs_confirm": true,
+    "max_download_gb": 0.4,
     "model_delete": true,
     "lora_delete": true
   },
@@ -216,7 +217,7 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
 
 `restart_required` is `true` after a change to a setting that needs a restart (3.3).
 
-`permissions` shows what the config allows, so a client does not learn about a block from a refused call. `model_download` is `huggingface_models.allow_model_download`. It also controls the LoRA download (4.6). `lora_directory` is the folder for LoRA files.
+`permissions` shows what the config allows, so a client does not learn about a block from a refused call. `model_download` is `huggingface_models.allow_model_download`. It also controls the LoRA download (4.6). `max_download_gb` is `huggingface_models.max_download_model_size_gb`, or `null` for no limit. `lora_directory` is the folder for LoRA files.
 
 ### 3.3 Configuration
 
@@ -259,6 +260,7 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `huggingface_models.allow_delete` | boolean | `true` | No | `false` refuses each delete from the cache. |
 | `huggingface_models.max_models` | integer | none | No | A download of a new model fails when the cache holds this number of mflux models. |
 | `huggingface_models.max_size_gb` | number | none | No | A download of a new model fails when the mflux models in the cache use this size. |
+| `huggingface_models.max_download_model_size_gb` | number | none | No | The most one download can fetch: a model or a LoRA file. A larger download returns `limit_exceeded`. The server takes the size from the Hub. When the Hub gives no size, the server refuses the download. For example, `0.4` allows a small LoRA and refuses a text encoder or a transformer. |
 | `limits.max_pixels` | integer | `16777216` | No | The most pixels (width times height) of one image. A generate request above it returns `limit_exceeded`. |
 | `limits.max_steps` | integer | `200` | No | The most denoising steps of one image. |
 | `limits.max_seeds` | integer | `16` | No | The most seeds, which means images, in one generate request. |

@@ -12,6 +12,7 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Added
 
+- The setting `huggingface_models.max_download_model_size_gb` limits the size of one download, for a model and for a LoRA file. `GET /v1/server` shows it as `permissions.max_download_gb`.
 - `GET /v1/server` shows `permissions` and `lora_directory`. `GET /v1/loras` and the MCP tool `list_loras` return the LoRA `directory`. A refused LoRA download says where to put the file. These come from the first customer test (`customer_testing/01_ControlNet`).
 - `just mflux-bump`, `mflux-pr`, `mflux-branch` and `mflux-reset` restart the LaunchAgent after the install. The new recipe `mflux-restart` does it, and skips it when the LaunchAgent is not installed.
 - The MCP tool `upload_image` (base64 in, upload ID out). A client now learns three things from the MCP alone. It learns how to give images. It learns how to make a control image. It learns what the mask colors mean. The text is in the MCP `instructions`, the description of each ControlNet generate tool, and the schema of each image option.

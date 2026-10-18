@@ -73,6 +73,7 @@ mflux_models:
   allow_delete: true
 huggingface_models:
   local_directory: /Volumes/Models/huggingface/hub
+  max_download_model_size_gb: 0.4  # one download at most: small LoRA files, no large model files
 image_directories:
   output: ./output
 server:

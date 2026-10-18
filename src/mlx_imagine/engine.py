@@ -209,6 +209,7 @@ class Engine:
                 "hf_access": self.settings.hf_allow_access,
                 "model_download": self.settings.hf_allow_model_download,
                 "download_needs_confirm": self.settings.hf_require_model_confirmation,
+                "max_download_gb": self.settings.hf_max_download_gb,
                 "model_delete": self.settings.mflux_allow_delete and self.settings.hf_allow_delete,
                 "lora_delete": self.settings.lora_allow_delete,
             },
@@ -702,6 +703,27 @@ class Engine:
         shown.save(buffer, "PNG")
         return buffer.getvalue()
 
+    def _check_download_size(self, size: int | None, name: str) -> None:
+        """Refuse one download that is larger than huggingface_models.max_download_model_size_gb. A size that the Hub
+        does not give cannot be checked, so the server refuses it when the limit is on."""
+        limit = self.settings.hf_max_download_gb
+        if limit is None:
+            return
+        setting = "huggingface_models.max_download_model_size_gb"
+        if size is None:
+            raise unprocessable(
+                "limit_exceeded",
+                f"The server cannot get the size of {name}, so it cannot check {setting} ({limit} GB).",
+                limit="max_download_model_size_gb",
+            )
+        if size > limit * GB:
+            raise unprocessable(
+                "limit_exceeded",
+                f"{name} is {size / GB:.2f} GB. {setting} is {limit} GB.",
+                limit="max_download_model_size_gb",
+                size_gb=round(size / GB, 2),
+            )
+
     # -- LoRA files ------------------------------------------------------------------------------------------------
 
     def list_loras(self) -> list[dict[str, Any]]:
@@ -720,8 +742,9 @@ class Engine:
         name = lora_files.target_name(repo_id, filename)
         if (self.lora_dir / name).exists():
             raise conflict("name_in_use", f"The LoRA directory has {name!r} already.", name=name)
+        size = lora_files.estimate_bytes(repo_id, filename)
+        self._check_download_size(size, name)
         if self.settings.hf_require_model_confirmation and not confirm:
-            size = lora_files.estimate_bytes(repo_id, filename)
             amount = f"{size / GB:.2f} GB of" if size else "an unknown amount of"
             raise conflict(
                 "confirm_required",
@@ -761,8 +784,10 @@ class Engine:
             return self._submit_community_download(model, confirm)
         entry = self.registry.supported(model)
         with_weights = self.settings.hf_allow_model_download
+        size = hf_models.estimate_bytes(entry) if with_weights else None
+        if with_weights:
+            self._check_download_size(size, entry.name)
         if with_weights and self.settings.hf_require_model_confirmation and not confirm:
-            size = hf_models.estimate_bytes(entry)
             amount = f"{size / GB:.1f} GB of" if size else "an unknown amount of"
             raise conflict(
                 "confirm_required",
@@ -795,6 +820,7 @@ class Engine:
         saved = saved_models.list_models(self.models_dir)
         _check_limits("mflux_models", saved, self.settings.mflux_max_models, self.settings.mflux_max_size_gb)
         size = hf_models.estimate_repo_bytes(repo_id)
+        self._check_download_size(size, repo_id)
         self._check_incoming_size(saved, size)
         if self.settings.hf_require_model_confirmation and not confirm:
             amount = f"{size / GB:.1f} GB of" if size else "an unknown amount of"

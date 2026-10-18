@@ -69,6 +69,7 @@ class Settings:
     hf_allow_delete: bool = True
     hf_max_models: int | None = None
     hf_max_size_gb: float | None = None
+    hf_max_download_gb: float | None = None  # the most one download can fetch: a model, or a LoRA file
     # image_directories
     lora_dir: str = "~/mlx-imagine/loras"
     lora_allow_delete: bool = True
@@ -148,6 +149,7 @@ FIELDS: dict[tuple[str | None, str], tuple[str, tuple[type, ...]]] = {
     ("huggingface_models", "allow_delete"): ("hf_allow_delete", (bool,)),
     ("huggingface_models", "max_models"): ("hf_max_models", (int, type(None))),
     ("huggingface_models", "max_size_gb"): ("hf_max_size_gb", _OPTIONAL_NUMBER),
+    ("huggingface_models", "max_download_model_size_gb"): ("hf_max_download_gb", _OPTIONAL_NUMBER),
     ("image_directories", "input"): ("input_dir", (str,)),
     ("image_directories", "output"): ("output_dir", (str,)),
     ("image_directories", "max_upload_mb"): ("max_upload_mb", (int,)),
@@ -195,7 +197,15 @@ PATH_FIELDS = frozenset(
     {"hf_hub_cache", "mflux_cache_dir", "model_dir", "lora_dir", "input_dir", "output_dir", "data_dir"}
 )
 POSITIVE_FIELDS = frozenset(
-    {"memory_limit_gb", "cache_limit_gb", "mflux_max_size_gb", "hf_max_size_gb", "mflux_max_models", "hf_max_models"}
+    {
+        "memory_limit_gb",
+        "cache_limit_gb",
+        "mflux_max_size_gb",
+        "hf_max_size_gb",
+        "hf_max_download_gb",
+        "mflux_max_models",
+        "hf_max_models",
+    }
 )
 AT_LEAST_ONE_FIELDS = frozenset(
     {"queue_max_length", "job_history", "max_upload_mb", "max_pixels", "max_steps", "max_seeds"}
