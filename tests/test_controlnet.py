@@ -135,3 +135,25 @@ def test_the_z_image_controlnet_needs_a_control_and_a_repeatable_option_becomes_
     with pytest.raises(ModelConfigError, match="Invalid --control"):
         args = parse_command_line(adapter.build_parser(), ["--prompt", "x", "--control", "nonsense"])
         adapter.ZImageTurboControlnetCommand.validate(args)
+
+
+def test_the_qwen21_edit_adapter_checks_its_options_before_the_job_starts() -> None:
+    """Bug: a bad edit request fails after the model loaded, or an image option runs without an image."""
+    from mlx_imagine.adapters import qwen21 as edit
+
+    def validate(*options: str) -> None:
+        args = parse_command_line(edit.build_parser(), ["--model", "qwen-image-2.1", "--prompt", "x", *options])
+        edit.Qwen21EditCommand.validate(args)
+
+    validate()
+    validate("--image-paths", "a.png", "b.png")
+    with pytest.raises(ModelConfigError, match="need at least one reference image"):
+        validate("--strength", "0.5")
+    with pytest.raises(ModelConfigError, match="mask_image not found"):
+        validate("--image-paths", "a.png", "--mask-image", "/nonexistent/m.png")
+    with pytest.raises(ModelConfigError, match="at most 10"):
+        validate("--image-paths", *["a.png"] * 11)
+    with pytest.raises(ModelConfigError, match="at least 1"):
+        validate("--guidance", "0.5")
+    entry = Registry().supported("qwen-image-2.1")
+    assert entry.modes == ("txt2img", "edit")

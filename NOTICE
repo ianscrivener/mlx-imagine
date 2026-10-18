@@ -47,7 +47,7 @@ This product includes software derived from mflux
   mflux's src/mflux/models/flux2/cli/flux2_generate.py.
 
   src/mlx_imagine/adapters/qwen21.py copies the statements of main() in
-  mflux's src/mflux/models/qwen21/cli/qwen21_generate.py.
+  mflux's src/mflux/models/qwen21/cli/qwen21_edit_generate.py.
 
   src/mlx_imagine/adapters/qwen21_controlnet.py copies the statements of
   main() in mflux's src/mflux/models/qwen21/cli/qwen21_controlnet_generate.py.

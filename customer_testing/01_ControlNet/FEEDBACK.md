@@ -24,7 +24,7 @@ Give a score and one sentence for each row.
 | Understand the descriptions of the tools | | |
 | Give the two photos to the server | | |
 | Find and download the BFS LoRA file | | |
-| Choose the base model | | |
+| Choose the LoRA file and read its guide | | |
 | Load the model with the LoRA | | |
 | Choose the settings (strength, steps, size) | | |
 | Get and read the result | | |

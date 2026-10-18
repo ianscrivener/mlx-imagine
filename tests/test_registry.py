@@ -23,7 +23,7 @@ def test_the_stage_1_models_and_their_commands(registry: Registry) -> None:
         "mflux-generate-z-image-turbo", "mflux-generate-z-image", "mflux-generate-ernie-image-turbo",
         "mflux-generate-ernie-image", "mflux-generate-krea2", "mflux-generate-lens", "mflux-generate-boogu",
         "mflux-generate-ideogram4", "mflux-generate-qwen", "mflux-generate-qwen-edit", "mflux-generate-flux3",
-        "mflux-generate-flux2", "mflux-generate-qwen-2.1", "mflux-generate-qwen-2.1-controlnet", "mflux-generate-z-image-controlnet",
+        "mflux-generate-flux2", "mflux-generate-qwen-2.1-edit", "mflux-generate-qwen-2.1-controlnet", "mflux-generate-z-image-controlnet",
     }  # fmt: skip
 
 

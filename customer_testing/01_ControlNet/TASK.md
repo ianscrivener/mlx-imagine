@@ -24,11 +24,11 @@ The file type is png, jpg or webp.
 
 The Hugging Face repository `Alissonerdx/BFS-Best-Face-Swap` holds LoRA files for face, head and body swap.
 Each file fits one base model. The repository has a guide for each model family.
-Read the guide for the file that you choose.
+Read the guide for Qwen-Image 2.1.
 
 ## Goal
 
-1. Choose a base model that the server can run. Choose a BFS LoRA file that fits that model.
+1. Use the base model Qwen-Image 2.1. Choose the BFS LoRA file that fits it.
 2. Make an image of the target photo with the face from `face_closeup`.
 3. Save the result image. Give its path.
 
