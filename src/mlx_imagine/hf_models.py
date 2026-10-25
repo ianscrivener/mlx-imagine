@@ -1,5 +1,10 @@
-"""The compatible models in the local Hugging Face cache: list, download and delete (docs/api.md 4.3)."""
+"""The models in the local Hugging Face cache: list, download, local saves and delete (docs/api.md 4).
 
+The cache is the one model store. It holds models in the original Hugging Face layout and in the mflux layout. A
+model that the server saves goes in as the repository local/<name>, with real files in its snapshot folder."""
+
+import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -11,6 +16,8 @@ from .jobs import Job
 from .registry import ModelEntry, Registry
 
 GB = 1000**3
+LOCAL_OWNER = "local"
+PARTIAL_DIR = ".mlx-imagine-partial"  # in the cache, so a finished save moves into place with a rename
 
 
 def _iso(timestamp: float | None) -> str | None:
@@ -28,6 +35,38 @@ def _cache_repos() -> dict[str, Any]:
     except CacheNotFound:
         return {}
     return {repo.repo_id.lower(): repo for repo in info.repos if repo.repo_type == "model"}
+
+
+def cache_dir() -> Path:
+    from huggingface_hub import constants
+
+    return Path(constants.HF_HUB_CACHE).expanduser()
+
+
+def repo_folder(repo_id: str) -> Path:
+    return cache_dir() / ("models--" + repo_id.replace("/", "--"))
+
+
+def local_repo_id(name: str) -> str:
+    return f"{LOCAL_OWNER}/{name}"
+
+
+def partial_folder(name: str) -> Path:
+    return cache_dir() / PARTIAL_DIR / name
+
+
+def install_local(partial: Path, name: str) -> Path:
+    """Move a finished save into the cache as the repository local/<name>. Returns the snapshot folder."""
+    import hashlib
+
+    folder = repo_folder(local_repo_id(name))
+    revision = hashlib.sha256(f"{name}:{time.time_ns()}".encode()).hexdigest()[:40]  # a commit hash in form only
+    snapshot = folder / "snapshots" / revision
+    snapshot.parent.mkdir(parents=True, exist_ok=True)
+    partial.rename(snapshot)
+    (folder / "refs").mkdir(exist_ok=True)
+    (folder / "refs" / "main").write_text(revision)
+    return snapshot
 
 
 def latest_snapshot(repo: Any) -> Path | None:
@@ -167,29 +206,30 @@ def estimate_repo_bytes(repo_id: str) -> int | None:
     return sum(file.size or 0 for file in info.siblings or [])
 
 
-def download_repo(repo_id: str, target: Path, job: Job) -> None:
-    """Download a whole repository (an mflux-format model) into `target`. The files are real files, not links into
-    the Hugging Face cache, so the folder is a saved model like any other."""
-    import shutil
-
+def download_repo(repo_id: str, job: Job) -> Path:
+    """Download a whole repository (an mflux-format model) into the cache. Returns the snapshot folder."""
     from huggingface_hub import snapshot_download
 
     job.set_progress({"phase": "downloading", "repo_id": repo_id})
-    snapshot_download(repo_id=repo_id, local_dir=target, tqdm_class=_progress_class(job))  # ty: ignore[no-matching-overload]
-    shutil.rmtree(target / ".cache", ignore_errors=True)  # the download bookkeeping of huggingface_hub
+    return Path(snapshot_download(repo_id=repo_id, tqdm_class=_progress_class(job)))  # ty: ignore[no-matching-overload]
 
 
-def delete(registry: Registry, repo_id: str) -> dict[str, Any]:
+def delete(repo_id: str) -> dict[str, Any]:
+    """Delete a repository from the cache. A repository whose files link to a folder outside it (a symlinked
+    alias of a model folder) loses only its links: the files it points to stay."""
     from huggingface_hub import scan_cache_dir
 
-    repos = _cache_repos()
-    repo = repos.get(repo_id.lower())
+    repo = _cache_repos().get(repo_id.lower())
     if repo is None:
         raise not_found(f"{repo_id} is not in the Hugging Face cache.", repo_id=repo_id)
-    if not registry.by_repo(repo.repo_id):
-        raise not_found(f"{repo_id} is not an mflux model repository.", repo_id=repo_id)
-    hashes = [revision.commit_hash for revision in repo.revisions]
-    strategy = scan_cache_dir().delete_revisions(*hashes)
-    freed = strategy.expected_freed_size
-    strategy.execute()
+    folder = Path(repo.repo_path)
+    files = [file for revision in repo.revisions for file in revision.files]
+    if any(not Path(file.blob_path).is_relative_to(folder) for file in files):
+        freed = 0
+        shutil.rmtree(folder)  # rmtree removes a symlink, never what it points to
+    else:
+        strategy = scan_cache_dir().delete_revisions(*[revision.commit_hash for revision in repo.revisions])
+        freed = strategy.expected_freed_size
+        strategy.execute()
+        shutil.rmtree(folder, ignore_errors=True)  # a local save has no blobs folder for the strategy to empty
     return {"repo_id": repo.repo_id, "freed_gb": round(freed / GB, 2)}

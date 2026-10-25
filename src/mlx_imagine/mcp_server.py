@@ -151,21 +151,33 @@ def build_mcp(engine: Engine) -> Any:
 
     @mcp.tool(annotations=_annotations(**READ_ONLY))
     def list_models(
-        location: Literal["local", "remote"] | None = None,
-        format: Literal["hf", "mflux"] | None = None,
-        store: Literal["hf_cache", "mflux_dir", "mflux_community", "hub"] | None = None,
+        view: Literal["models", "mflux", "hf", "hf/all", "other", "all"] = "models",
         supported: bool | None = None,
         family: str | None = None,
         q: str | None = None,
         limit: int | None = None,
         cursor: str | None = None,
     ) -> dict[str, Any]:
-        """List models. No filter: the local models. `store` hf_cache is the Hugging Face cache and mflux_dir is
-        the mflux model directory. `location` remote with `store` mflux_community lists the community
-        manifest. `store` hub searches the whole Hub and needs `q`."""
-        filters = {"location": location, "format": format, "store": store, "supported": supported,
-                   "family": family, "q": q, "limit": limit, "cursor": cursor}  # fmt: skip
-        return call(engine.catalog.list_models, filters)
+        """List the models in the Hugging Face cache. `view` models (the default) is the image models in both
+        formats. mflux is the mflux-format models. hf is the original layout of the mflux registry models, 1 GB
+        or larger. hf/all also has the hf repositories under 1 GB (small files only). other is all other
+        repositories. all is mflux, hf and other."""
+        filters = {"supported": supported, "family": family, "q": q, "limit": limit, "cursor": cursor}
+        return call(engine.catalog.list_models, view, filters)
+
+    @mcp.tool(annotations=_annotations(**READ_ONLY))
+    def list_community_models(
+        quant: str | None = None,
+        ns: str | None = None,
+        search: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """List the mflux-community models on the Hub, from the catalog the server syncs. `quant` is 3, 4, 5, 6,
+        8 or bf16. `ns` is the upstream owner, for example Qwen, krea or bfl. `search` is a text in the
+        repository ID, for example qwen. Download one with download_model."""
+        filters = {"quant": quant, "ns": ns, "search": search, "limit": limit, "cursor": cursor}
+        return call(engine.catalog.list_community, filters)
 
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=True))
     async def download_model(
@@ -178,20 +190,20 @@ def build_mcp(engine: Engine) -> Any:
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=False))
     async def save_model(model: str, quantize: Literal[3, 4, 5, 6, 8], ctx: Context, name: str | None = None,
                          wait_seconds: float = 0) -> dict[str, Any]:  # fmt: skip
-        """Save a quantized copy of a model to the model directory. The save unloads the loaded model."""
+        """Save a quantized copy of a model to the Hugging Face cache as local/<name>. The save unloads the
+        loaded model."""
         request = {"model": model, "quantize": quantize, **({"name": name} if name else {})}
         return await wait(call(engine.submit_save, request), wait_seconds, ctx)
 
     @mcp.tool(annotations=_annotations(destructive_hint=False, open_world_hint=False))
-    def set_saved_model_base(name: str, base_model: str) -> dict[str, Any]:
-        """Record which mflux model a saved model is. Use it for a model that mflux-save wrote."""
-        return call(engine.set_base_model, name, base_model)
+    def set_saved_model_base(repo_id: str, base_model: str) -> dict[str, Any]:
+        """Record which mflux model an mflux-format model is. Use it for a model with no base model."""
+        return call(engine.set_base_model, repo_id, base_model)
 
     @mcp.tool(annotations=_annotations(**DESTRUCTIVE))
-    def delete_model(store: Literal["hf_cache", "mflux_dir"], name: str, confirm: bool) -> dict[str, Any]:
-        """Delete a model from the Hugging Face cache (name is the repo ID) or from the mflux model directory
-        (name is the folder name). Set confirm to true."""
-        return call(engine.delete_model, store, name, confirm)
+    def delete_model(repo_id: str, confirm: bool) -> dict[str, Any]:
+        """Delete an image model from the Hugging Face cache. Set confirm to true."""
+        return call(engine.delete_model, repo_id, confirm)
 
     # -- images in -------------------------------------------------------------------------------------------
 

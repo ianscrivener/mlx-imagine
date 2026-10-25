@@ -3,6 +3,7 @@ huggingface_hub (both read their cache paths once, at import): no test downloads
 cache or loads weights."""
 
 import atexit
+import json
 import os
 import shutil
 import tempfile
@@ -24,7 +25,7 @@ import pytest
 from _fake_command import FAKE_SPEC, FakeModel
 from mflux.models.z_image.variants.z_image import ZImage
 
-from mlx_imagine import engine as engine_module, hf_models
+from mlx_imagine import engine as engine_module, hf_models, saved_models
 from mlx_imagine.config import Settings
 from mlx_imagine.engine import Engine
 from mlx_imagine.registry import Registry
@@ -49,17 +50,17 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     FakeModel.instances.clear()
     yield
     FakeModel.instances.clear()
+    # The Hugging Face cache is one folder for the session: empty it, so no test sees a model of another.
+    shutil.rmtree(os.environ["HF_HUB_CACHE"], ignore_errors=True)
 
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     return Settings(
-        model_dir=str(tmp_path / "models"),
         lora_dir=str(tmp_path / "loras"),
         input_dir=str(tmp_path / "input"),
         output_dir=str(tmp_path / "output"),
         data_dir=str(tmp_path / "data"),
-        mflux_cron_minutes=0,
         hf_cron_minutes=0,
     )
 
@@ -90,3 +91,21 @@ def wait_for(job: Any, timeout: float = 10.0) -> Any:
     finally:
         job.unsubscribe(subscriber)
     return job
+
+
+def cache_repo(repo_id: str, mflux: bool = True, with_sidecar: bool = False, size_gb: float = 0) -> Path:
+    """A repository in the Hugging Face cache of the session, with an mflux layout or a plain one. Returns the
+    snapshot folder. `size_gb` adds a sparse weight file of that size, which takes no disk space."""
+    folder = hf_models.repo_folder(repo_id)
+    snapshot = folder / "snapshots" / ("a" * 40)
+    (snapshot / "transformer").mkdir(parents=True)
+    metadata = {"quantization_level": "8", "mflux_version": "0.18"} if mflux else {"total_size": 1}
+    (snapshot / "transformer" / saved_models.INDEX).write_text(json.dumps({"metadata": metadata}))
+    (folder / "refs").mkdir(exist_ok=True)
+    (folder / "refs" / "main").write_text("a" * 40)
+    if with_sidecar:
+        saved_models.write_sidecar(snapshot, "z-image-turbo", "z-image-turbo", 8)
+    if size_gb:
+        with open(snapshot / "transformer" / "weights.safetensors", "wb") as file:
+            file.truncate(int(size_gb * 1000**3))
+    return snapshot

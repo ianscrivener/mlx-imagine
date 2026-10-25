@@ -25,12 +25,12 @@ def test_a_yaml_config_file_round_trips(tmp_path) -> None:
     path.write_text(
         "# local test\n"
         "server:\n  port: 9001\n"
-        "mflux_models:\n  local_directory: /tmp/models\n  some_future_key: 1\n"
+        "huggingface_models:\n  local_directory: /tmp/hub\n  some_future_key: 1\n"
         "mflux_config:\n  allowed_quantize: q4 q8 bf16\n"
         "memory_limit_gb: 28\n"
     )
     settings = config.load(path)
-    assert (settings.port, settings.model_dir, settings.memory_limit_gb) == (9001, "/tmp/models", 28)
+    assert (settings.port, settings.hf_hub_cache, settings.memory_limit_gb) == (9001, "/tmp/hub", 28)
     assert settings.quantize_choices() == {4, 8, None}
     settings.port = 9002
     config.save(settings, path)

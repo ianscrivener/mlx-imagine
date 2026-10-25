@@ -1,17 +1,14 @@
-"""Models that mflux saved to the model directory: list, identity sidecar and delete (docs/api.md 4.4).
+"""The mflux format: a folder that mflux saved, often quantized, and its identity sidecar (docs/api.md 4.4).
 
 mflux writes model.safetensors.index.json for each saved component, with the quantization level and the mflux
 version, but not the model name. The server writes that name in a sidecar file, mlx-imagine.json
 (docs/scope.md 3.10)."""
 
 import json
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .errors import conflict, not_found, unprocessable
-from .paths import resolve_inside, safe_name
 from .registry import Registry
 
 SIDECAR = "mlx-imagine.json"
@@ -70,48 +67,18 @@ def describe(path: Path) -> dict[str, Any]:
     }
 
 
-def list_models(model_dir: Path) -> list[dict[str, Any]]:
-    if not model_dir.is_dir():
-        return []
-    # A name that starts with "." is a save in progress, or one that failed. It is not a saved model.
-    return [
-        describe(path) for path in sorted(model_dir.iterdir()) if not path.name.startswith(".") and is_saved_model(path)
-    ]
-
-
-def find(model_dir: Path, name: str) -> Path:
-    path = resolve_inside(model_dir, safe_name(name))
+def is_mflux_layout(path: Path) -> bool:
+    """True when a folder holds an mflux-format model: mflux saved it, or the server wrote its sidecar. The
+    original Hugging Face layout also has model.safetensors.index.json files, but without the mflux metadata."""
     if not is_saved_model(path):
-        raise not_found(f"No saved model named {name!r} in the model directory.", name=name)
-    return path
+        return False
+    if (path / SIDECAR).is_file():
+        return True
+    metadata = _index_metadata(path)
+    return "quantization_level" in metadata or "mflux_version" in metadata
 
 
-def set_base_model(registry: Registry, model_dir: Path, name: str, base_model: str) -> dict[str, Any]:
-    path = find(model_dir, name)
+def set_base_model(registry: Registry, path: Path, base_model: str) -> dict[str, Any]:
     entry = registry.find(base_model)
-    quantize = describe(path)["quantize"]
-    write_sidecar(path, model_name=entry.name, base_model=entry.name, quantize=quantize)
+    write_sidecar(path, model_name=entry.name, base_model=entry.name, quantize=describe(path)["quantize"])
     return describe(path)
-
-
-def base_model_of(model_dir: Path, name: str, given: str | None) -> str:
-    """The registry name a saved model loads as: the client's base_model, or the sidecar's."""
-    if given:
-        return given
-    sidecar = read_sidecar(find(model_dir, name))
-    if not sidecar or not sidecar.get("base_model"):
-        raise unprocessable(
-            "base_model_required",
-            f"The saved model {name!r} has no {SIDECAR}. Give base_model, or set it with PATCH /v8/models/mflux_dir/{name}.",
-            name=name,
-        )
-    return sidecar["base_model"]
-
-
-def delete(model_dir: Path, name: str, in_use: set[str]) -> dict[str, Any]:
-    path = find(model_dir, name)
-    if path.name in in_use:
-        raise conflict("model_in_use", f"The saved model {name!r} is loaded or a job in the queue uses it.", name=name)
-    freed = _size(path)
-    shutil.rmtree(path)
-    return {"name": name, "freed_gb": round(freed / GB, 2)}

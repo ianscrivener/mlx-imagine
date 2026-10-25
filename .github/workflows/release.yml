@@ -4,12 +4,14 @@ name: Release
 # job waits for approval of the `pypi` environment, publishes through PyPI Trusted Publishing, then tags the
 # release and makes the GitHub release from the CHANGELOG section.
 on:
-  workflow_dispatch:
-    inputs:
-      confirm:
-        description: 'Type "publish" to confirm the release'
-        required: true
-        type: string
+  pull_request:
+    branches: [na]
+  # workflow_dispatch:
+  #   inputs:
+  #     confirm:
+  #       description: 'Type "publish" to confirm the release'
+  #       required: true
+  #       type: string
 
 permissions:
   contents: read

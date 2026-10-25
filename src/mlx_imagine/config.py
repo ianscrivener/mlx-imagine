@@ -3,8 +3,7 @@
 The config file is YAML (a .toml file is read as TOML) with these sections:
 
     mflux_config:        default_quantize, allowed_quantize, cache_dir
-    mflux_models:        local_directory, remote_url, manifest_url, cron_minutes, allow_download, allow_delete, max_models, max_size_gb
-    huggingface_models:  local_directory, cron_minutes, allow_hf_access, allow_model_download, require_model_confirmation, allow_delete, max_models, max_size_gb
+    huggingface_models:  local_directory, mflux_remote_url, mflux_models_hf_url, mflux_models_mflux_url, cron_minutes, allow_hf_access, allow_model_download, require_model_confirmation, allow_delete, max_models, max_size_gb
     image_directories:   input, output, max_upload_mb
     limits:              max_pixels, max_steps, max_seeds
     image_metadata:      exif_enabled, iptc_enabled, json_sidecar_enabled
@@ -49,19 +48,12 @@ class Settings:
     default_quantize: int | None = None
     allowed_quantize: str = "q3 q4 q5 q6 q8 bf16"
     mflux_cache_dir: str | None = None
-    # mflux_models
-    model_dir: str = "~/mlx-imagine/models"
-    mflux_remote_url: str = "https://huggingface.co/mflux-community"
-    mflux_manifest_url: str = (
-        "https://huggingface.co/buckets/mflux-community/ci/resolve/models_community_manifest.jsonl"
-    )
-    mflux_cron_minutes: int = 5
-    mflux_allow_download: bool = True
-    mflux_allow_delete: bool = True
-    mflux_max_models: int | None = None
-    mflux_max_size_gb: float | None = None
-    # huggingface_models
+    # huggingface_models: the one model store. It holds both formats (docs/api.md 4).
     hf_hub_cache: str | None = None
+    mflux_remote_url: str = "https://huggingface.co/mflux-community"
+    # The two files of the mflux-community catalog: the repositories on the Hub, and the mflux models.
+    mflux_models_hf_url: str = "https://huggingface.co/buckets/mflux-community/ci/resolve/models_hf.json"
+    mflux_models_mflux_url: str = "https://huggingface.co/buckets/mflux-community/ci/resolve/models_mflux.json"
     hf_cron_minutes: int = 5
     hf_allow_access: bool = True
     hf_allow_model_download: bool = True
@@ -131,17 +123,12 @@ FIELDS: dict[tuple[str | None, str], tuple[str, tuple[type, ...]]] = {
     ("mflux_config", "default_quantize"): ("default_quantize", (int, type(None))),
     ("mflux_config", "allowed_quantize"): ("allowed_quantize", (str, list)),
     ("mflux_config", "cache_dir"): ("mflux_cache_dir", (str, type(None))),
-    ("mflux_models", "local_directory"): ("model_dir", (str,)),
-    ("mflux_models", "remote_url"): ("mflux_remote_url", (str,)),
-    ("mflux_models", "manifest_url"): ("mflux_manifest_url", (str,)),
-    ("mflux_models", "cron_minutes"): ("mflux_cron_minutes", (int,)),
-    ("mflux_models", "allow_download"): ("mflux_allow_download", (bool,)),
-    ("mflux_models", "allow_delete"): ("mflux_allow_delete", (bool,)),
-    ("mflux_models", "max_models"): ("mflux_max_models", (int, type(None))),
-    ("mflux_models", "max_size_gb"): ("mflux_max_size_gb", _OPTIONAL_NUMBER),
     ("loras", "local_directory"): ("lora_dir", (str,)),
     ("loras", "allow_delete"): ("lora_allow_delete", (bool,)),
     ("huggingface_models", "local_directory"): ("hf_hub_cache", (str, type(None))),
+    ("huggingface_models", "mflux_remote_url"): ("mflux_remote_url", (str,)),
+    ("huggingface_models", "mflux_models_hf_url"): ("mflux_models_hf_url", (str,)),
+    ("huggingface_models", "mflux_models_mflux_url"): ("mflux_models_mflux_url", (str,)),
     ("huggingface_models", "cron_minutes"): ("hf_cron_minutes", (int,)),
     ("huggingface_models", "allow_hf_access"): ("hf_allow_access", (bool,)),
     ("huggingface_models", "allow_model_download"): ("hf_allow_model_download", (bool,)),
@@ -193,24 +180,20 @@ RESTART_FIELDS = frozenset(
         "use_tls",
     }
 )
-PATH_FIELDS = frozenset(
-    {"hf_hub_cache", "mflux_cache_dir", "model_dir", "lora_dir", "input_dir", "output_dir", "data_dir"}
-)
+PATH_FIELDS = frozenset({"hf_hub_cache", "mflux_cache_dir", "lora_dir", "input_dir", "output_dir", "data_dir"})
 POSITIVE_FIELDS = frozenset(
     {
         "memory_limit_gb",
         "cache_limit_gb",
-        "mflux_max_size_gb",
         "hf_max_size_gb",
         "hf_max_download_gb",
-        "mflux_max_models",
         "hf_max_models",
     }
 )
 AT_LEAST_ONE_FIELDS = frozenset(
     {"queue_max_length", "job_history", "max_upload_mb", "max_pixels", "max_steps", "max_seeds"}
 )
-NON_NEGATIVE_FIELDS = frozenset({"mflux_cron_minutes", "hf_cron_minutes"})
+NON_NEGATIVE_FIELDS = frozenset({"hf_cron_minutes"})
 
 
 def parse_allowed_quantize(value: str | list) -> set[int | None]:
@@ -421,5 +404,5 @@ def apply_environment(settings: Settings) -> None:
 
 
 def make_directories(settings: Settings) -> None:
-    for name in ("model_dir", "lora_dir", "input_dir", "output_dir", "data_dir"):
+    for name in ("lora_dir", "input_dir", "output_dir", "data_dir"):
         settings.path(name).mkdir(parents=True, exist_ok=True)

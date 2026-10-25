@@ -3,7 +3,7 @@
 Usage: suite.py STEPS MODEL IMAGE [URL]
   STEPS  comma-separated: load,seeds,cancel,img2img,mcp,lowram,save,unload,cycles,lora,inpaint,control
   LORAS  (step lora) comma-separated LoRA names in the LoRA directory; LORA_QUANTIZE and LORA_BASE_MODEL are load fields, LORA_SCALE and LORA_STEPS tune the run
-  MODEL  a saved model name in mflux_models.local_directory, or a registry name
+  MODEL  a saved model (local/<name> in the Hugging Face cache, or <name>), or a registry name
   IMAGE  a PNG for the img2img step
 
 This loads real weights. Run it only through scripts/real/run.sh (just test-real), which starts the memory
@@ -185,7 +185,7 @@ def step_save() -> None:
         job["state"] == "succeeded",
         f"{time.time() - started:.0f}s peak={used['mlx_peak_gb']} err={job['error']}",
     )
-    deleted = api("DELETE", f"/v8/models/mflux_dir/{SAVE_NAME}?confirm=true")
+    deleted = api("DELETE", f"/v8/models/local/{SAVE_NAME}?confirm=true")
     report("delete the saved test model", "freed_gb" in (deleted or {}), json.dumps(deleted))
 
 

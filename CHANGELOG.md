@@ -8,6 +8,13 @@ All notable changes to mlx-imagine are listed here. The format follows
 
 ### Changed
 
+- The community catalog comes from the two mflux-community files `models_hf.json` and `models_mflux.json`. The cron sync copies both and sends their `ETag`. They replace `models_community_manifest.jsonl` and the setting `mflux_manifest_url`. The new settings are `huggingface_models.mflux_models_hf_url` and `mflux_models_mflux_url`.
+- `GET /v8/models-community` and the MCP tool `list_community_models` list the mflux-community repositories. The filters are `q` or `quant`, `ns` or `namespace`, and `search` or `s` (a text anywhere in the ID).
+- **Breaking:** the Hugging Face cache is the one model store. The server no longer reads the `mflux_models` section of the config or the old mflux model directory.
+  - A download of either format and a save go into the cache. A save is the repository `local/<name>`. A load request can name it as `<name>`.
+  - `GET /v8/models` lists the image models (mflux and Hugging Face format). `/v8/models/mflux`, `/v8/models/hf`, `/v8/models/other` and `/v8/models/all` list one format or all repositories. These lists skip an hf repository under 1 GB (small files only). `/v8/models/hf/all` lists the hf repositories of all sizes. The server drops the `location`, `store` and `format` filters and the remote lists.
+  - `GET`, `PATCH` and `DELETE /v8/models/{owner}/{name}` take the repository ID. A delete refuses an `other` repository, and it keeps the files that a linked repository points to.
+  - `mflux_remote_url` and `mflux_manifest_url` move to `huggingface_models`. `huggingface_models.max_models` and `max_size_gb` count the image models of both formats.
 - **Breaking:** the native API moved from `/v1` to `/v8`. `/v1` now holds only the OpenAI-compatible routes: `GET /v1/models`, `POST /v1/images/generations` and `POST /v1/images/edits`. The old `/v1` native routes are removed.
 - The model routes follow REST rules:
   - `GET /v8/engine/model`, `PUT /v8/engine/model` and `DELETE /v8/engine/model` read, load and unload the model. `GET` returns 404 `model_not_loaded` when no model is loaded.

@@ -7,7 +7,7 @@ from collections.abc import Iterator
 
 import PIL.Image
 import pytest
-from conftest import wait_for
+from conftest import cache_repo, wait_for
 from fastapi.testclient import TestClient
 
 from mlx_imagine.api import create_app
@@ -98,15 +98,13 @@ def test_a_config_change_reports_which_settings_need_a_restart(client: TestClien
 def test_the_allow_flags_and_limits_refuse_downloads_and_deletes(client: TestClient, engine: Engine) -> None:
     """Bug: allow_delete: false in the config does not stop a delete request."""
     engine.settings.hf_allow_delete = False
-    engine.settings.mflux_allow_delete = False
     engine.settings.hf_allow_access = False
-    assert client.delete("/v8/models/mflux_dir/x?confirm=true").json()["error"]["code"] == "operation_disabled"
-    assert client.delete("/v8/models/hf_cache/a/b?confirm=true").status_code == 403
+    assert client.delete("/v8/models/local/x?confirm=true").json()["error"]["code"] == "operation_disabled"
+    assert client.delete("/v8/models/a/b?confirm=true").status_code == 403
     response = client.post("/v8/downloads", json={"model": "z-image-turbo"})
     assert response.status_code == 403
-    engine.settings.mflux_max_models = 1
-    (engine.models_dir / "one" / "vae").mkdir(parents=True)
-    (engine.models_dir / "one" / "vae" / "model.safetensors.index.json").write_text("{}")
+    engine.settings.hf_max_models = 1
+    cache_repo("local/one", with_sidecar=True)
     response = client.post("/v8/saves", json={"model": "z-image-turbo", "quantize": 8})
     assert response.json()["error"]["code"] == "limit_reached"
 
@@ -198,21 +196,15 @@ def test_swagger_enable_false_removes_the_docs_routes(engine: Engine) -> None:
 
 
 def test_the_swagger_schema_offers_select_lists_and_body_examples(client: TestClient) -> None:
-    """Bug: the Swagger page shows a free text box for location or store, and an empty body for a POST."""
+    """Bug: the Swagger page lacks a model list or a filter, or shows an empty body for a POST."""
     schema = client.get("/openapi.json").json()
     params = {p["name"]: p for p in schema["paths"]["/v8/models"]["get"]["parameters"]}
 
-    def options(parameter: dict) -> list[str]:
-        node = parameter["schema"]
-        node = next(item for item in node.get("anyOf", [node]) if "enum" in item)
-        return node["enum"]
-
-    assert options(params["location"]) == ["local", "remote"]
-    assert options(params["format"]) == ["hf", "mflux"]
-    assert options(params["store"]) == ["hf_cache", "mflux_dir", "mflux_community", "hub"]
+    assert set(params) == {"supported", "family", "q", "limit", "cursor"}
+    assert {"/v8/models/mflux", "/v8/models/hf", "/v8/models/other", "/v8/models/all"} <= set(schema["paths"])
     body = schema["paths"]["/v8/generate"]["post"]["requestBody"]["content"]["application/json"]["schema"]
     assert body["examples"][0]["prompt"]
-    assert client.get("/v8/models", params={"store": "nope"}).status_code == 400
+    assert client.get("/v8/models", params={"limit": 0}).status_code == 400
 
 
 def test_a_body_over_the_limit_is_refused_before_the_app_reads_it(client: TestClient) -> None:

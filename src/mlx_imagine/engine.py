@@ -3,6 +3,7 @@
 Every handler here runs on the job queue's worker thread. The submit_* methods run on the client threads: they
 check a request against the target model (docs/api.md 2.3) and add a job, but do no MLX work."""
 
+import contextlib
 import gc
 import logging
 import os
@@ -54,7 +55,6 @@ class LoadSpec:
     argv: list[str]
     quantize: int | None
     low_ram: bool
-    saved_name: str | None = None
     loras: list[dict[str, Any]] = field(default_factory=list)  # [{name, scale}] applied at load
     # An mflux-format model in the Hugging Face cache: its repository ID and its snapshot folder.
     hub_repo: str | None = None
@@ -68,9 +68,9 @@ class LoadSpec:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "name": self.saved_name or self.hub_repo or self.entry.name,
+            "name": self.hub_repo or self.entry.name,
             "model_name": self.entry.name,
-            "saved": self.saved_name is not None,
+            "saved": self.hub_repo is not None,
             "quantize": self.quantize,
             "low_ram": self.low_ram,
             "loras": self.loras,
@@ -158,7 +158,7 @@ class Engine:
             self.apply_memory_limits()
         if "queue.queue_max_length" in applied:
             self.queue.max_length = self.settings.queue_max_length
-        if {"mflux_models.cron_minutes", "huggingface_models.cron_minutes"} & set(applied):
+        if "huggingface_models.cron_minutes" in applied:
             self.catalog.start()  # a start with both intervals at 0 made no thread; the thread reads the new ones
         if "queue.job_history" in applied:
             self.queue.set_history(self.settings.job_history)
@@ -211,7 +211,6 @@ class Engine:
                 "download_needs_confirm": self.settings.hf_require_model_confirmation,
                 "max_download_gb": self.settings.hf_max_download_gb,
                 "hf_cache_delete": self.settings.hf_allow_delete,
-                "mflux_dir_delete": self.settings.mflux_allow_delete,
                 "lora_delete": self.settings.lora_allow_delete,
             },
             "lora_directory": str(self.lora_dir),
@@ -223,9 +222,9 @@ class Engine:
         specs += [job.context["load_spec"] for job in jobs if isinstance(job.context.get("load_spec"), LoadSpec)]
         return {spec.hub_repo.lower() for spec in specs if spec.hub_repo}
 
-    def _models_in_use(self) -> tuple[set[str], set[str]]:
-        """(registry names, saved model names) that are loaded, are the target, or that a waiting job uses."""
-        names, saved = set(), set()
+    def _models_in_use(self) -> set[str]:
+        """The registry names that are loaded, are the target, or that a waiting job uses."""
+        names = set()
         specs = [s for s in (self.target, self.loaded.spec if self.loaded else None) if s]
         for job in self.queue.waiting() + ([self.queue.running] if self.queue.running else []):
             if isinstance(job.context.get("load_spec"), LoadSpec):
@@ -234,9 +233,7 @@ class Engine:
                 names.add(str(job.request["model"]))
         for spec in specs:
             names.add(spec.entry.name)
-            if spec.saved_name:
-                saved.add(spec.saved_name)
-        return names, saved
+        return names
 
     # -- load ----------------------------------------------------------------------------------------------------
 
@@ -247,19 +244,13 @@ class Engine:
             raise invalid_request("The load request needs 'model'.")
         base_model = request.pop("base_model", None)
         lora_request = request.pop("loras", None)
-        saved_name = self._saved_name(model)
         hub = self._hub_mflux_model(model)
         if hub is not None:
             if "quantize" in request:
                 raise invalid_request("An mflux-format model is already quantized. Do not give 'quantize'.")
-            snapshot, source = hub
-            entry = self.registry.supported(base_model or self._hub_base_model(model, source))
+            repo_id, snapshot = hub
+            entry = self.registry.supported(base_model or self._hub_base_model(repo_id, snapshot))
             argv = ["--model", str(snapshot), "--base-model", entry.name]
-        elif saved_name is not None:
-            if "quantize" in request:
-                raise invalid_request("A saved model is already quantized. Do not give 'quantize'.")
-            entry = self.registry.supported(saved_models.base_model_of(self.models_dir, saved_name, base_model))
-            argv = ["--model", str(self.models_dir / saved_name), "--base-model", entry.name]
         else:
             entry = self.registry.supported(model)
             argv = ["--model", entry.name]
@@ -290,10 +281,9 @@ class Engine:
             argv=argv,
             quantize=request.get("quantize"),
             low_ram=bool(request.get("low_ram", False)),
-            saved_name=saved_name,
             loras=[{"name": item["name"], "scale": item["scale"]} for item in chosen],
-            hub_repo=model if hub is not None else None,
-            model_path=hub[0] if hub is not None else None,
+            hub_repo=hub[0] if hub is not None else None,
+            model_path=hub[1] if hub is not None else None,
         )
         args, _ = self._validate(load_spec, [])
         load_spec.capabilities = self._capabilities(load_spec, args)
@@ -360,38 +350,44 @@ class Engine:
             label = "bf16 (no quantization)" if quantize is None else f"q{quantize}"
             raise unprocessable("option_invalid", f"{label} is not in mflux_config.allowed_quantize ({allowed}).")
 
-    def _hub_mflux_model(self, model: str) -> tuple[Path, str | None] | None:
-        """(snapshot folder, source repository) when `model` is an mflux-format repository in the Hugging Face
-        cache, else None. The path comes from the cache scan, never from the client."""
-        if "/" not in model or model.startswith(".") or self.registry.by_repo(model):
+    def _hub_mflux_model(self, model: str) -> tuple[str, Path] | None:
+        """(repository ID, snapshot folder) when `model` names an mflux-format repository in the Hugging Face
+        cache, else None. A name with no owner is a model that the server saved: local/<name>. The path comes
+        from the cache scan, never from the client."""
+        if model.startswith(".") or self.registry.by_repo(model):
             return None
+        if "/" not in model:
+            if self._known(model):
+                return None
+            model = hf_models.local_repo_id(model)
         snapshot = hf_models.snapshot_path(model)
-        if snapshot is None or not saved_models.is_saved_model(snapshot):
+        if snapshot is None or not saved_models.is_mflux_layout(snapshot):
             return None
-        return snapshot, self.catalog.quant_source(model)
+        return model, snapshot
 
-    def _hub_base_model(self, model: str, source: str | None) -> str:
+    def _known(self, name: str) -> bool:
+        try:
+            self.registry.find(name)
+        except ApiError:
+            return False
+        return True
+
+    def _hub_base_model(self, repo_id: str, snapshot: Path) -> str:
+        """The registry name an mflux-format model loads as: the sidecar's, else the manifest's source model."""
+        sidecar = saved_models.read_sidecar(snapshot)
+        if sidecar and sidecar.get("base_model"):
+            return sidecar["base_model"]
+        source = self.catalog.quant_source(repo_id)
         entries = self.registry.by_repo(source) if source else []
         entry = next((e for e in entries if e.supported), entries[0] if entries else None)
         if entry is None:
             raise unprocessable(
                 "base_model_required",
-                f"The manifest does not name the base model of {model!r}. Give base_model.",
-                model=model,
+                f"{repo_id!r} has no {saved_models.SIDECAR} and the manifest does not name its base model. Give "
+                f"base_model, or set it with PATCH /v8/models/{repo_id}.",
+                model=repo_id,
             )
         return entry.name
-
-    def _saved_name(self, model: str) -> str | None:
-        """The saved model a load request names, or None for a registry name."""
-        if "/" in model or model.startswith("."):
-            return None
-        try:
-            self.registry.find(model)
-            return None
-        except ApiError:
-            pass
-        candidate = self.models_dir / model
-        return model if saved_models.is_saved_model(candidate) else None
 
     def _validate(self, load_spec: LoadSpec, generate_argv: list[str]) -> tuple[Any, list[str]]:
         """Parse and run the command's validate() step. No files are read and no weights load."""
@@ -436,11 +432,11 @@ class Engine:
             return self.loaded.to_dict()
 
     def _record_identity(self, load_spec: LoadSpec) -> None:
-        """After a saved model without a sidecar loads with the client's base_model, write the sidecar, so the
+        """After an mflux-format model without a sidecar loads with the client's base_model, write the sidecar, so the
         next load needs no base_model (docs/scope.md 3.10)."""
-        if load_spec.saved_name is None:
+        path = load_spec.model_path
+        if path is None or "base_model" not in load_spec.request:
             return
-        path = self.models_dir / load_spec.saved_name
         if saved_models.read_sidecar(path) is None:
             quantize = saved_models.describe(path)["quantize"]
             saved_models.write_sidecar(path, load_spec.entry.name, load_spec.entry.name, quantize)
@@ -463,16 +459,12 @@ class Engine:
         free_memory()
 
     def _check_cached(self, load_spec: LoadSpec) -> None:
-        if load_spec.saved_name is not None or load_spec.hub_repo is not None:
+        if load_spec.hub_repo is not None:
             return
         complete = hf_models.is_complete(load_spec.entry)
         if complete is False:
             local = self._local_copies(load_spec.entry)
-            hint = (
-                f" Or load a saved model of it: {', '.join(local)} (give base_model {load_spec.entry.name!r})."
-                if local
-                else ""
-            )
+            hint = f" Or load an mflux-format copy of it: {', '.join(local)}." if local else ""
             raise not_found(
                 f"{load_spec.entry.hf_repo} is not complete in the Hugging Face cache. "
                 f"Send a download request first.{hint}",
@@ -481,18 +473,13 @@ class Engine:
             )
 
     def _local_copies(self, entry: ModelEntry) -> list[str]:
-        """Names of the saved models in the mflux directory that are copies of this model: the sidecar names it,
-        or the folder is the repository name with a suffix such as -mflux-q8."""
-        prefix = entry.hf_repo.replace("/", "--").lower()
-        found = []
-        for saved in saved_models.list_models(self.models_dir):
-            name = saved["name"].lower()
-            same_repo = name == prefix or (
-                name.startswith(prefix + "-") and name[len(prefix) + 1 :].startswith("mflux")
-            )
-            if saved.get("base_model") == entry.name or (saved.get("base_model") is None and same_repo):
-                found.append(saved["name"])
-        return found
+        """The mflux-format repositories in the cache that load as this model."""
+        try:
+            self.catalog.scan()  # only on the failure path of a load, so the hint sees the cache as it is now
+            models = self.catalog.view_items("mflux")
+        except Exception:  # noqa: BLE001 -- only a hint in an error message
+            return []
+        return [model["id"] for model in models if model.get("base_model") == entry.name]
 
     def _check_memory(self, load_spec: LoadSpec) -> None:
         need = self._estimate_bytes(load_spec)
@@ -514,8 +501,6 @@ class Engine:
         """The weight size on disk, scaled for quantization. A rough guide, not an exact figure."""
         if load_spec.model_path is not None:
             return saved_models._size(load_spec.model_path)
-        if load_spec.saved_name is not None:
-            return saved_models._size(self.models_dir / load_spec.saved_name)
         for model in hf_models.list_models(self.registry):
             if model["model_name"] == load_spec.entry.name:
                 size = int(model["size_gb"] * GB)
@@ -801,6 +786,15 @@ class Engine:
 
     # -- download, save and delete --------------------------------------------------------------------------------
 
+    def _cache_models(self) -> list[dict[str, Any]]:
+        """The image models in the Hugging Face cache (both formats). huggingface_models.max_models and
+        max_size_gb count these."""
+        self.rescan()
+        return self.catalog.view_items("models")
+
+    def _check_cache_limits(self, models: list[dict[str, Any]]) -> None:
+        _check_limits("huggingface_models", models, self.settings.hf_max_models, self.settings.hf_max_size_gb)
+
     def submit_download(self, model: str, confirm: bool = False) -> Job:
         if not self.settings.hf_allow_access:
             raise disabled("huggingface_models.allow_hf_access is false.")
@@ -820,14 +814,12 @@ class Engine:
             )
         cached = hf_models.list_models(self.registry)
         if not any(item["model_name"] == entry.name for item in cached):
-            _check_limits("huggingface_models", cached, self.settings.hf_max_models, self.settings.hf_max_size_gb)
+            self._check_cache_limits(self._cache_models())
         job = Job("download", {"model": entry.name}, lambda job: self._do_download(job, entry, with_weights))
         return self.queue.submit(job)
 
     def _submit_community_download(self, repo_id: str, confirm: bool) -> Job:
-        """Download an mflux-format model of the community manifest into the mflux model directory."""
-        if not self.settings.mflux_allow_download:
-            raise disabled("mflux_models.allow_download is false.")
+        """Download an mflux-format model of the community manifest into the Hugging Face cache."""
         if not self.settings.hf_allow_model_download:
             raise disabled("huggingface_models.allow_model_download is false. This download is all weights.")
         info = self.catalog.quant_info(repo_id)
@@ -838,14 +830,13 @@ class Engine:
             raise unprocessable(
                 "model_not_supported", f"The server cannot run the base model {info['source_repo']}.", model=repo_id
             )
-        name = safe_name(repo_id.replace("/", "--"))
-        if (self.models_dir / name).exists():
-            raise conflict("name_in_use", f"The model directory already has {name!r}.", name=name)
-        saved = saved_models.list_models(self.models_dir)
-        _check_limits("mflux_models", saved, self.settings.mflux_max_models, self.settings.mflux_max_size_gb)
+        if hf_models.snapshot_path(repo_id) is not None:
+            raise conflict("name_in_use", f"{repo_id} is in the Hugging Face cache already.", model=repo_id)
+        models = self._cache_models()
+        self._check_cache_limits(models)
         size = hf_models.estimate_repo_bytes(repo_id)
         self._check_download_size(size, repo_id)
-        self._check_incoming_size(saved, size)
+        self._check_incoming_size(models, size)
         if self.settings.hf_require_model_confirmation and not confirm:
             amount = f"{size / GB:.1f} GB of" if size else "an unknown amount of"
             raise conflict(
@@ -853,53 +844,41 @@ class Engine:
                 f"You are about to download {amount} model data from Hugging Face. Set confirm to true to continue.",
                 model=repo_id,
             )
-        quant = info["quant"]
-        quantize = int(quant[1:]) if quant and quant[1:].isdigit() else None
-        job = Job(
-            "download",
-            {"model": repo_id, "name": name},
-            lambda job: self._do_community_download(job, repo_id, entry, name, quantize),
-        )
+        job = Job("download", {"model": repo_id}, lambda job: self._do_community_download(job, repo_id))
         return self.queue.submit(job)
 
-    def _check_incoming_size(self, saved: list[dict[str, Any]], incoming: int | None) -> None:
-        """Refuse a download that would take the mflux directory above mflux_models.max_size_gb."""
-        limit = self.settings.mflux_max_size_gb
+    def _check_incoming_size(self, models: list[dict[str, Any]], incoming: int | None) -> None:
+        """Refuse a new model that would take the cache above huggingface_models.max_size_gb."""
+        limit = self.settings.hf_max_size_gb
         if limit is None or not incoming:
             return
-        total = sum(model["size_gb"] for model in saved) + incoming / GB
+        total = sum(model.get("size_gb") or 0 for model in models) + incoming / GB
         if total > limit:
             raise conflict(
                 "limit_reached",
-                f"mflux_models.max_size_gb is {limit}, and this download would take the models to {total:.1f} GB.",
+                f"huggingface_models.max_size_gb is {limit}, and this model would take the models to {total:.1f} GB.",
             )
 
-    def _do_community_download(
-        self, job: Job, repo_id: str, entry: ModelEntry, name: str, quantize: int | None
-    ) -> dict[str, Any]:
+    def _do_community_download(self, job: Job, repo_id: str) -> dict[str, Any]:
         with self._job(job):
-            final = self.models_dir / name
-            partial = self.models_dir / f".{name}.partial"
-            shutil.rmtree(partial, ignore_errors=True)  # left by a download that failed before
             # Jobs run one at a time, so this check sees each download that ended before it.
-            saved = saved_models.list_models(self.models_dir)
-            _check_limits("mflux_models", saved, self.settings.mflux_max_models, self.settings.mflux_max_size_gb)
+            models = self._cache_models()
+            self._check_cache_limits(models)
             try:
-                hf_models.download_repo(repo_id, partial, job)
-                self._check_incoming_size(saved, saved_models._size(partial))
-                saved_models.write_sidecar(partial, model_name=entry.name, base_model=entry.name, quantize=quantize)
-                partial.rename(final)
+                snapshot = hf_models.download_repo(repo_id, job)
+                # The Hub may not give the size first, so check the size of the files that arrived.
+                self._check_incoming_size(models, saved_models._size(snapshot))
             except BaseException:
-                shutil.rmtree(partial, ignore_errors=True)
+                with contextlib.suppress(Exception):
+                    hf_models.delete(repo_id)
                 raise
-            result = saved_models.describe(final)
-        self.rescan("mflux_dir")
-        return result
+        self.rescan()
+        return self.catalog.get(repo_id)
 
     def _do_download(self, job: Job, entry: ModelEntry, with_weights: bool) -> dict[str, Any]:
         with self._job(job):
             result = hf_models.download(self.registry, entry, job, with_weights)
-        self.rescan("hf_cache")
+        self.rescan()
         return result
 
     def submit_save(self, request: dict[str, Any]) -> Job:
@@ -912,24 +891,25 @@ class Engine:
         if quantize not in QUANTIZE_CHOICES:
             raise invalid_request(f"The save request needs 'quantize', one of {QUANTIZE_CHOICES}.")
         self._check_quantize(quantize)
-        saved = saved_models.list_models(self.models_dir)
-        _check_limits("mflux_models", saved, self.settings.mflux_max_models, self.settings.mflux_max_size_gb)
+        self._check_cache_limits(self._cache_models())
         entry = self.registry.supported(model)
         name = safe_name(request["name"] if "name" in request else f"{entry.name}-q{quantize}")
-        if (self.models_dir / name).exists():
-            raise conflict("name_in_use", f"The model directory already has {name!r}.", name=name)
+        repo_id = hf_models.local_repo_id(name)
+        if hf_models.repo_folder(repo_id).exists():
+            raise conflict("name_in_use", f"The Hugging Face cache already has {repo_id}.", name=name)
         job = Job("save", {"model": entry.name, "quantize": quantize, "name": name},
                   lambda job: self._do_save(job, entry, quantize, name))  # fmt: skip
         # The save job unloads the model, so later generate requests must see no target model.
         return self.queue.submit(job, before_queue=lambda: setattr(self, "target", None))
 
     def _do_save(self, job: Job, entry: ModelEntry, quantize: int, name: str) -> dict[str, Any]:
+        repo_id = hf_models.local_repo_id(name)
         with self._job(job):
-            final = self.models_dir / name
-            if final.exists():
-                raise conflict("name_in_use", f"The model directory already has {name!r}.", name=name)
-            partial = self.models_dir / f".{name}.partial"
+            if hf_models.repo_folder(repo_id).exists():
+                raise conflict("name_in_use", f"The Hugging Face cache already has {repo_id}.", name=name)
+            partial = hf_models.partial_folder(name)
             shutil.rmtree(partial, ignore_errors=True)  # left by a save that failed before
+            partial.parent.mkdir(parents=True, exist_ok=True)
             self._unload(job)  # one model in memory at a time
             job.set_progress({"phase": "loading"})
             try:
@@ -941,65 +921,49 @@ class Engine:
                     del model
                     free_memory()
                 saved_models.write_sidecar(partial, model_name=entry.name, base_model=entry.name, quantize=quantize)
-                partial.rename(final)
+                hf_models.install_local(partial, name)
             except BaseException:
                 shutil.rmtree(partial, ignore_errors=True)
                 raise
-            result = saved_models.describe(final)
-        self.rescan("mflux_dir")
-        return result
+        self.rescan()
+        return self.catalog.get(repo_id)
 
-    def delete_hf_model(self, repo_id: str, confirm: bool) -> dict[str, Any]:
+    def delete_model(self, repo_id: str, confirm: bool) -> dict[str, Any]:
         if not self.settings.hf_allow_delete:
             raise disabled("huggingface_models.allow_delete is false.")
         if not confirm:
             raise conflict("confirm_required", "Set confirm to true to delete the model.")
-        names, _ = self._models_in_use()
+        model = self.catalog.get(repo_id)
+        if model["format"] == "other":
+            raise invalid_request(f"{repo_id} is not an image model. The server deletes only image models.")
         if repo_id.lower() in self._hub_repos_in_use():
             raise conflict("model_in_use", f"{repo_id} is loaded or a job in the queue uses it.", repo_id=repo_id)
+        names = self._models_in_use()
         for entry in self.registry.by_repo(repo_id):
             if entry.name in names:
                 raise conflict(
                     "model_in_use", f"{entry.name} is loaded or a job in the queue uses it.", model=entry.name
                 )
-        result = hf_models.delete(self.registry, repo_id)
-        self.rescan("hf_cache")
+        result = hf_models.delete(repo_id)
+        self.rescan()
         return result
 
-    def delete_saved_model(self, name: str, confirm: bool) -> dict[str, Any]:
-        if not self.settings.mflux_allow_delete:
-            raise disabled("mflux_models.allow_delete is false.")
-        if not confirm:
-            raise conflict("confirm_required", "Set confirm to true to delete the model.")
-        _, saved = self._models_in_use()
-        result = saved_models.delete(self.models_dir, name, saved)
-        self.rescan("mflux_dir")
-        return result
+    def set_base_model(self, repo_id: str, base_model: str) -> dict[str, Any]:
+        model = self.catalog.get(repo_id)
+        if model["format"] != "mflux" or not model.get("path"):
+            raise invalid_request("Only an mflux-format model has a base model.", repo_id=repo_id)
+        saved_models.set_base_model(self.registry, Path(model["path"]), base_model)
+        self.rescan()
+        return self.catalog.get(repo_id)
 
-    def delete_model(self, store: str, name: str, confirm: bool) -> dict[str, Any]:
-        if store == "hf_cache":
-            return self.delete_hf_model(name, confirm)
-        if store == "mflux_dir":
-            return self.delete_saved_model(name, confirm)
-        raise invalid_request("Only a model in the store 'hf_cache' or 'mflux_dir' can be deleted.", store=store)
-
-    def set_base_model(self, name: str, base_model: str) -> dict[str, Any]:
-        result = saved_models.set_base_model(self.registry, self.models_dir, name, base_model)
-        self.rescan("mflux_dir")
-        return result
-
-    def rescan(self, store: str) -> None:
-        """Refresh the catalog rows of one store after a change. A failed scan must not fail the job."""
+    def rescan(self) -> None:
+        """Refresh the catalog after a change. A failed scan must not fail the job."""
         try:
-            self.catalog.scan(store)
+            self.catalog.scan()
         except Exception:
-            logger.exception("catalog: the scan of %s failed", store)
+            logger.exception("catalog: the scan of the Hugging Face cache failed")
 
     # -- helpers -------------------------------------------------------------------------------------------------
-
-    @property
-    def models_dir(self) -> Path:
-        return self.settings.path("model_dir")
 
     @property
     def lora_dir(self) -> Path:

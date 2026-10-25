@@ -68,11 +68,8 @@ The config file is `~/.config/mlx-imagine/config.yaml`. Set `MLX_IMAGINE_CONFIG`
 mflux_config:
   default_quantize: 8
   allowed_quantize: "q4 q6 q8 bf16"
-mflux_models:
-  local_directory: /Volumes/Models/mflux
-  allow_delete: true
 huggingface_models:
-  local_directory: /Volumes/Models/huggingface/hub
+  local_directory: /Volumes/Models/huggingface/hub  # the one model store: both formats, downloads and saves
   max_download_model_size_gb: 0.4  # one download at most: small LoRA files, no large model files
 image_directories:
   output: ./output

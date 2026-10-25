@@ -107,8 +107,8 @@ def _response_format(value: Any) -> str:
 def register(app: FastAPI, engine: Engine) -> None:
     @app.get("/v1/models")
     def openai_models() -> dict[str, Any]:
-        models = engine.catalog.list_models({"location": "local", "supported": True})["models"]
-        names = sorted({m["name"] if m["store"] == "mflux_dir" else (m["model_name"] or m["name"]) for m in models})
+        models = engine.catalog.list_models("models", {"supported": True, "limit": 100})["models"]
+        names = sorted({m["id"] if m["format"] == "mflux" else (m["model_name"] or m["id"]) for m in models})
         created = int(time.time())
         data = [{"id": n, "object": "model", "created": created, "owned_by": "mlx-imagine"} for n in names]
         return {"object": "list", "data": data}

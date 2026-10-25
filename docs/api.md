@@ -67,7 +67,7 @@ Error codes:
 | `option_blocked` | 422 | The server does not accept this mflux option (scope 3.6). |
 | `option_for_load` | 422 | This option belongs to the load request, not to the generate request. |
 | `model_not_supported` | 422 | The model has no command steps, or it is in stage 2. |
-| `base_model_required` | 422 | A saved model has no sidecar file. Give `base_model`. |
+| `base_model_required` | 422 | An mflux-format model has no sidecar file, and the community catalog does not name its base model. Give `base_model`. |
 | `queue_full` | 429 | The queue has the maximum number of jobs. |
 | `operation_disabled` | 403 | The config does not allow this operation. |
 | `limit_reached` | 409 | A model limit of the config stops the request. |
@@ -209,7 +209,6 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
     "download_needs_confirm": true,
     "max_download_gb": 0.4,
     "hf_cache_delete": true,
-    "mflux_dir_delete": true,
     "lora_delete": true
   },
   "lora_directory": "/Users/me/mlx-imagine/loras"
@@ -218,23 +217,18 @@ Example: the queue holds a load job for `z-image-turbo`. A generate request that
 
 `restart_required` is `true` after a change to a setting that needs a restart (3.3).
 
-`permissions` shows what the config allows, so a client does not learn about a block from a refused call. `model_download` is `huggingface_models.allow_model_download`. It also controls the LoRA download (4.6). `max_download_gb` is `huggingface_models.max_download_model_size_gb`, or `null` for no limit. `hf_cache_delete` and `mflux_dir_delete` tell if a delete from each store is allowed (4.5). `lora_directory` is the folder for LoRA files.
+`permissions` shows what the config allows, so a client does not learn about a block from a refused call. `model_download` is `huggingface_models.allow_model_download`. It also controls the LoRA download (4.6). `max_download_gb` is `huggingface_models.max_download_model_size_gb`, or `null` for no limit. `hf_cache_delete` tells if the config allows a model delete (4.5). `lora_directory` is the folder for LoRA files.
 
 ### 3.3 Configuration
 
-Two things describe a model: its format and its location.
+The Hugging Face cache (`huggingface_models.local_directory`) is the one model store. It holds models in two formats:
 
-| Format | Meaning | Settings section |
-|---|---|---|
-| mflux format | Safetensors in the layout of an mflux saved model. Often quantized. | `mflux_models` |
-| Hugging Face format | Safetensors in the layout of the original repository, in the Hugging Face hub cache. | `huggingface_models` |
+| Format | Meaning |
+|---|---|
+| mflux format | Safetensors in the layout of an mflux saved model. Often quantized. |
+| Hugging Face format | Safetensors in the layout of the original repository. |
 
-| Location | Meaning | Setting |
-|---|---|---|
-| Local | A folder on this Mac. | `local_directory` |
-| Remote | A Hugging Face address that the server can download from. | `remote_url` (mflux format only) |
-
-Each section has a `local_directory`. `mflux_models` also has a `remote_url`: the Hugging Face organization with ready-made mflux models. `huggingface_models` needs no URL, because its remote location is the Hugging Face Hub.
+A download of either format goes into the cache. A save goes into the cache as the repository `local/<name>` (4.4). To use a model folder that is outside the cache, link its files into the cache as a repository.
 
 `GET /v8/config` returns all settings in the layout of the config file. `PATCH /v8/config` changes one or more settings and writes them to the config file. The default file is `~/.config/mlx-imagine/config.yaml`. The write keeps the keys that the server does not use yet, but not the comments.
 
@@ -243,24 +237,19 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `mflux_config.default_quantize` | integer | none | No | The quantization for a load request without `quantize`. It must be in `allowed_quantize`. |
 | `mflux_config.allowed_quantize` | string | `q3 q4 q5 q6 q8 bf16` | No | The quantizations that load and save requests can use. `bf16` allows a load without quantization. |
 | `mflux_config.cache_dir` | path | mflux default | Yes | The mflux cache. Sets `MFLUX_CACHE_DIR`. |
-| `mflux_models.local_directory` | path | `~/mlx-imagine/models` | No | The saved mflux models. |
-| `mflux_models.remote_url` | string | `https://huggingface.co/mflux-community` | No | The Hugging Face organization with ready-made mflux models. Not used yet. For a later download of saved mflux models. |
-| `mflux_models.manifest_url` | string | the community manifest URL | No | The JSON Lines file with the mflux-community models. |
-| `mflux_models.cron_minutes` | integer | `5` | No | The minutes between scans of the mflux model directory. `0` turns the scan off. |
-| `mflux_models.allow_download` | boolean | `true` | No | `false` refuses the download of a community mflux model into `local_directory` (4.3). |
-| `mflux_models.allow_delete` | boolean | `true` | No | `false` refuses each delete of a saved model. |
-| `mflux_models.max_models` | integer | none | No | A save fails when the directory holds this number of models. |
-| `mflux_models.max_size_gb` | number | none | No | A save fails when the models use this size. |
 | `loras.local_directory` | path | `~/mlx-imagine/loras` | No | The LoRA files (4.6). |
 | `loras.allow_delete` | boolean | `true` | No | `false` refuses each delete of a LoRA file. |
 | `huggingface_models.local_directory` | path | `huggingface_hub` default | Yes | The Hugging Face hub cache (the folder with the `models--*` folders). Sets `HF_HUB_CACHE`. |
-| `huggingface_models.cron_minutes` | integer | `5` | No | The minutes between scans of the Hugging Face cache. The manifest sync runs with it. `0` turns both off. |
+| `huggingface_models.mflux_remote_url` | string | `https://huggingface.co/mflux-community` | No | The Hugging Face organization with ready-made mflux models. Not used yet. |
+| `huggingface_models.mflux_models_hf_url` | string | `.../mflux-community/ci/resolve/models_hf.json` | No | The community catalog file with the mflux-community repositories on the Hub (4.8). |
+| `huggingface_models.mflux_models_mflux_url` | string | `.../mflux-community/ci/resolve/models_mflux.json` | No | The community catalog file with the mflux models and their upstream repositories (4.8). |
+| `huggingface_models.cron_minutes` | integer | `5` | No | The minutes between scans of the Hugging Face cache. The sync of the community catalog runs with it. `0` turns both off. |
 | `huggingface_models.allow_hf_access` | boolean | `true` | Yes | `false` sets `HF_HUB_OFFLINE=1`. The server never reaches Hugging Face, and a download request returns `operation_disabled`. |
 | `huggingface_models.allow_model_download` | boolean | `true` | No | `false` lets a download fetch small files only (JSON, text). It skips weight files (`.safetensors`, `.ckpt`, `.gguf`, `.bin`, `.pt`, `.pth`, `.onnx`, `.h5`, `.msgpack`). The job result has `weights_skipped: true`, and `complete` stays `false`. |
 | `huggingface_models.require_model_confirmation` | boolean | `false` | No | `true` makes a download request need `confirm: true`. Without it, the server returns `confirm_required` and the size of the download. Applies only when `allow_model_download` is `true`. |
 | `huggingface_models.allow_delete` | boolean | `true` | No | `false` refuses each delete from the cache. |
-| `huggingface_models.max_models` | integer | none | No | A download of a new model fails when the cache holds this number of mflux models. |
-| `huggingface_models.max_size_gb` | number | none | No | A download of a new model fails when the mflux models in the cache use this size. |
+| `huggingface_models.max_models` | integer | none | No | The most image models (both formats) in the cache. A download or a save of one more model fails. |
+| `huggingface_models.max_size_gb` | number | none | No | The most size of the image models in the cache. A download or a save of one more model fails. |
 | `huggingface_models.max_download_model_size_gb` | number | none | No | The most one download can fetch: a model or a LoRA file. A larger download returns `limit_exceeded`. The server takes the size from the Hub. When the Hub gives no size, the server refuses the download. For example, `0.4` allows a small LoRA and refuses a text encoder or a transformer. |
 | `limits.max_pixels` | integer | `16777216` | No | The most pixels (width times height) of one image. A generate request above it returns `limit_exceeded`. |
 | `limits.max_steps` | integer | `200` | No | The most denoising steps of one image. |
@@ -271,7 +260,7 @@ Each section has a `local_directory`. `mflux_models` also has a `remote_url`: th
 | `services.api_enable` | boolean | `true` | Yes | `false` turns off the REST routes under `/v8` and `/v1`, except `/v8/health`. They return `api_disabled` (HTTP 404). |
 | `services.mcp_enable` | boolean | `true` | Yes | `false` does not start the MCP server at `/mcp`. |
 | `services.swagger_enable` | boolean | `true` | Yes | `true` serves the Swagger page at `/docs`, ReDoc at `/redoc` and the schema at `/openapi.json`. The Swagger page lists the operations in alphabetical order. When a token is on, these paths need no token. The page has an Authorize button for it. |
-| `data_directory` | path | `~/mlx-imagine/data` | No | The folder for `mlx-imagine.sqlite` and the manifest copy. |
+| `data_directory` | path | `~/mlx-imagine/data` | No | The folder for `mlx-imagine.sqlite` and the copies of the community catalog. |
 | `image_directories.input` | path | `~/mlx-imagine/input` | No | Uploads and input images. |
 | `image_directories.output` | path | `~/mlx-imagine/output` | No | Generated images. |
 | `image_directories.max_upload_mb` | integer | `50` | No | The maximum size of one upload. |
@@ -309,46 +298,39 @@ A request that the config does not allow fails with `operation_disabled` (HTTP 4
 
 ## 4. Models
 
-The model catalog is under `/v8/models`. The models the server can run are under `/v8/registry`.
+The model catalog is under `/v8/models`. It lists what the Hugging Face cache holds. The models the server can run are under `/v8/registry`.
 
-### 4.1 The model list
+### 4.1 The model lists
 
-A model has a format and a location.
+Each repository in the cache has one format:
 
 | Format | Meaning |
 |---|---|
-| `mflux` | Safetensors in the mflux layout, often quantized. |
-| `hf` | Safetensors in the layout of the original Hugging Face repository. |
+| `mflux` | An mflux-format model: mflux saved it, often quantized. |
+| `hf` | The original Hugging Face layout of a model in the mflux registry. |
+| `other` | Any other repository, for example a language model of another program. |
 
-| Location | Store | Where |
-|---|---|---|
-| local | `hf_cache` | The Hugging Face cache (`huggingface_models.local_directory`). |
-| local | `mflux_dir` | The mflux model directory (`mflux_models.local_directory`). |
-| remote | `mflux_community` | The mflux-community models in the community manifest. |
-| remote | `hub` | All of Hugging Face. A live search. |
+An `hf` repository under 1 GB holds only small files (configs, a tokenizer), not the model weights. Only `GET /v8/models/hf/all` lists it.
 
-`GET /v8/models` lists models. All filters are optional and combine with AND:
+Six routes list the cache. Each route shows a different set of formats:
+
+| Route | Formats |
+|---|---|
+| `GET /v8/models` | `mflux` and `hf` (1 GB or larger): the image models. |
+| `GET /v8/models/mflux` | `mflux` |
+| `GET /v8/models/hf` | `hf` (1 GB or larger) |
+| `GET /v8/models/hf/all` | `hf` (all sizes) |
+| `GET /v8/models/other` | `other` |
+| `GET /v8/models/all` | `mflux`, `hf` (1 GB or larger) and `other` |
+
+All filters are optional and combine with AND:
 
 | Query | Values | Meaning |
 |---|---|---|
-| `location` | `local`, `remote` | The default is `local`. |
-| `store` | `hf_cache`, `mflux_dir`, `mflux_community`, `hub` | One store. |
-| `format` | `hf`, `mflux` | One format. |
 | `supported` | `true`, `false` | Models that this server can run. |
 | `family` | text | A model family, for example `flux2`. |
-| `q` | text | A text in the name. The `hub` store needs it. |
-| `limit`, `cursor` | integer, text | A page. The response has `next_cursor` when more models follow. The default limit is 100 (20 for a remote list). |
-
-The views of the table in the roadmap map to requests like this:
-
-| View | Request |
-|---|---|
-| Local, `hf` format | `?location=local&format=hf` |
-| Local mflux format in the Hugging Face cache | `?store=hf_cache&format=mflux` |
-| Local mflux format in the mflux directory | `?store=mflux_dir` |
-| All local mflux format models | `?location=local&format=mflux` |
-| Remote, mflux-community | `?location=remote&store=mflux_community` |
-| Remote, all of Hugging Face | `?store=hub&q=<text>` |
+| `q` | text | A text in the repository ID. |
+| `limit`, `cursor` | integer, text | A page. The response has `next_cursor` when more models follow. The default limit is 100. |
 
 Response:
 
@@ -356,23 +338,25 @@ Response:
 {
   "models": [
     {
-      "id": "mflux_dir/z-image-turbo-q8",
-      "store": "mflux_dir",
-      "location": "local",
+      "id": "local/z-image-turbo-q8",
+      "repo_id": "local/z-image-turbo-q8",
       "format": "mflux",
-      "repo_id": null,
-      "name": "z-image-turbo-q8",
       "model_name": "z-image-turbo",
       "base_model": "z-image-turbo",
       "family": "z-image",
       "quant": "q8",
       "size_gb": 9.1,
-      "complete": null,
+      "complete": true,
       "supported": true,
       "loadable": true,
       "in_manifest": false,
-      "path": "/Users/me/mlx-imagine/models/z-image-turbo-q8",
-      "scanned_at": "2026-10-17T10:12:00Z"
+      "path": "/Volumes/hub/models--local--z-image-turbo-q8/snapshots/3f9a.../",
+      "scanned_at": "2026-10-17T10:12:00Z",
+      "revisions": ["3f9a1c2"],
+      "last_accessed": "2026-10-17T10:00:00Z",
+      "mflux_version": "0.18.0",
+      "saved_at": "2026-10-16T08:30:00Z",
+      "has_sidecar": true
     }
   ],
   "total": 1,
@@ -380,15 +364,15 @@ Response:
 }
 ```
 
-- `id` is `<store>/<name>`. For `hf_cache`, `mflux_community` and `hub`, the name is the repository ID, so the id has a second `/`.
-- `supported` is true when the server can run the base model. `loadable` is true when a load request can use this model now. A model in `hf_cache` with format `mflux` is loadable when its newest snapshot has the mflux layout. A saved model without `mlx-imagine.json` is not loadable until you set `base_model`.
-- `in_manifest` is true when the community manifest names the repository.
-- A `hf_cache` model has `revisions` and `last_accessed`. A `mflux_dir` model has `mflux_version`, `saved_at` and `has_sidecar`. A remote model has `url`.
-- The local lists read the database, so they answer at once. They can be up to `cron_minutes` old. `POST /v8/models/scans` scans both stores and syncs the manifest now.
+- `id` is the repository ID. A model that the server saved has the owner `local`.
+- `supported` is true when the server can run the base model. `loadable` is true when a load request can use this model now. An `mflux` model is loadable when the server knows its base model: from its sidecar `mlx-imagine.json`, or from the community catalog (4.8). An `hf` model is loadable when the cache holds all of its files.
+- An `mflux` model has `mflux_version`, `saved_at` and `has_sidecar`. Each model has `revisions` and `last_accessed`.
+- `in_manifest` is true when the community catalog names the repository.
+- The lists read the database, so they answer at once. They can be up to `huggingface_models.cron_minutes` old. `POST /v8/models/scans` scans the cache and syncs the community catalog now.
 
-`GET /v8/models/{store}/{name}` returns one model.
+`GET /v8/models/{owner}/{name}` returns one model. It scans the cache again when the last scan did not see the repository.
 
-The database is `data/mlx-imagine.sqlite`. A thread scans the stores every `cron_minutes` and copies the manifest to `data/models_community_manifest.jsonl` when it changed. The manifest and the `hub` search reach the network only when `huggingface_models.allow_hf_access` is true. The cache scan lists a repository only when the mflux registry or the manifest names it.
+The database is `data/mlx-imagine.sqlite`. A thread scans the cache every `cron_minutes` and syncs the community catalog (4.8).
 
 ### 4.2 Registry and schema
 
@@ -458,7 +442,8 @@ The schemas do not include blocked options. The names are the `argparse` destina
 ```
 
 - `model` is a registry name, an alias or a Hugging Face repository ID in the registry. The server downloads only the files that the model needs. The files go to the Hugging Face cache.
-- `model` can also be the repository ID of a quantization in the community manifest (the store `mflux_community` of 4.1), for example `mflux-community/flux2-klein-9b-kv-mflux-q4`. The server then downloads the whole repository to `mflux_models.local_directory`, in a folder named `<owner>--<name>`, and writes `mlx-imagine.json` with the base model from the manifest. The result is a saved model, so it loads by that folder name. This download needs `mflux_models.allow_download`, `huggingface_models.allow_model_download` and a base model that the server can run. The `mflux_models` limits `max_models` and `max_size_gb` apply.
+- `model` can also be the repository ID of a quantization in the community catalog (4.8), for example `mflux-community/flux2-klein-9b-kv-mflux-q4`. The server then downloads the whole repository to the Hugging Face cache. It loads by its repository ID. The community catalog gives its base model. This download needs `huggingface_models.allow_model_download` and a base model that the server can run.
+- The limits `huggingface_models.max_models` and `max_size_gb` apply to a new model.
 - `confirm` is needed only when `huggingface_models.require_model_confirmation` is `true`.
 - The job `result` is the model entry from the list.
 
@@ -471,27 +456,28 @@ The schemas do not include blocked options. The names are the `argparse` destina
 ```
 
 - `name` is optional. The default is `<model>-q<quantize>`.
-- `name` is one directory name. It cannot contain `/` or `..`.
-- If the directory exists, the server returns HTTP 409.
+- `name` is one name. It cannot contain `/` or `..`. The model goes into the Hugging Face cache as the repository `local/<name>`, with real files (not links) in its snapshot folder.
+- If the cache has `local/<name>` already, the server returns HTTP 409.
+- A load request can name the model as `local/<name>` or as `<name>`.
 - The save job unloads the loaded model first, because the server keeps a maximum of one model in memory. After the save, no model is loaded.
-- The server writes `mlx-imagine.json` in the new directory.
+- The server writes `mlx-imagine.json` in the snapshot folder.
 
-`PATCH /v8/models/mflux_dir/{name}` sets `base_model` for a model that has no sidecar file:
+`PATCH /v8/models/{owner}/{name}` sets `base_model` for an `mflux` model that has no sidecar file:
 
 ```json
 { "base_model": "z-image-turbo" }
 ```
 
-The server writes the sidecar file. It checks that `base_model` is a registry name.
+The server writes the sidecar file in the snapshot folder. It checks that `base_model` is a registry name. A model of another format returns `invalid_request`.
 
 ### 4.5 Delete
 
-`DELETE /v8/models/{store}/{name}?confirm=true` deletes a model from the store `hf_cache` or `mflux_dir`.
+`DELETE /v8/models/{owner}/{name}?confirm=true` deletes an image model (`mflux` or `hf`) from the Hugging Face cache. An `other` repository returns `invalid_request`: the server does not delete the models of other programs.
 
 - Requires `confirm=true`. Without it, the server returns `confirm_required`.
-- Returns `operation_disabled` when `allow_delete` is false for that store.
+- Returns `operation_disabled` when `huggingface_models.allow_delete` is false.
 - Returns `model_in_use` when the model is loaded, is the target model, or a job in the queue uses it.
-- A delete from `hf_cache` uses `huggingface_hub` `delete_revisions()`. A delete from `mflux_dir` removes only a directory inside `mflux_models.local_directory`.
+- The delete uses `huggingface_hub` `delete_revisions()`. When the files of a repository link to a folder outside the repository, the delete deletes only the repository folder and its links. The files that the links point to stay.
 - Returns HTTP 200 with the freed size.
 
 ### 4.6 LoRA files
@@ -535,6 +521,60 @@ The MCP server tells a client about this in its `instructions` and in the descri
 
 A model with a ControlNet loads more weights. On a 36 GB Mac, the Qwen model with its ControlNet used about 8 GB of swap during the load. This was true also for a quantized saved model. Close other programs first.
 
+### 4.8 The mflux-community catalog
+
+The mflux-community organization (https://huggingface.co/mflux-community) publishes two catalog files:
+
+| File | Content |
+|---|---|
+| `models_hf.json` | Each mflux-community repository on the Hub: `model_name` (the repository ID), `size_gb`, `upload_date` and `commit_hash`. |
+| `models_mflux.json` | Each mflux model: its family, aliases, quantizations and upstream repository. |
+
+Every `huggingface_models.cron_minutes`, the server copies the two files to `data/` when they changed. It sends the last `ETag` of each file, so an unchanged file does not download again. The sync reaches the network only when `huggingface_models.allow_hf_access` is true. The server does not use the Hub API or the `hf` command for this catalog.
+
+The server joins the two files. The repository `mflux-community/flux-1-dev-mflux-q4` is the model `dev` of the family `flux1`, with the upstream repository `black-forest-labs/FLUX.1-dev`. When no model of `models_mflux.json` matches a repository, its `upstream_repo` and `ns` are `null`.
+
+`GET /v8/models-community` lists the mflux-community repositories. All filters are optional and combine with AND:
+
+| Query | Values | Meaning |
+|---|---|---|
+| `q` or `quant` | `3`, `4`, `5`, `6`, `8`, `q4`, `bf16` | One quantization. `q=4` and `quant=q4` are the same. |
+| `ns` or `namespace` | text | The owner of the upstream repository, for example `Qwen`, `krea`, `black-forest-labs` or `bfl`. Case does not matter. |
+| `search` or `s` | text | A text anywhere in the repository ID. `search=qwen` finds each ID that contains `qwen`. Case does not matter. |
+| `limit`, `cursor` | integer, text | A page, as in 4.1. |
+
+Response:
+
+```json
+{
+  "models": [
+    {
+      "id": "mflux-community/z-image-turbo-mflux-q8",
+      "repo_id": "mflux-community/z-image-turbo-mflux-q8",
+      "quant": "q8",
+      "size_gb": 9.1,
+      "model_key": "z-image-turbo",
+      "model_name": "z-image-turbo",
+      "family": "z-image",
+      "model_type": "image",
+      "upstream_repo": "Tongyi-MAI/Z-Image-Turbo",
+      "ns": "Tongyi-MAI",
+      "supported": true,
+      "in_cache": false,
+      "upload_date": "2026-08-21",
+      "commit_hash": "96382ccd4863453c898efa055760fe68d9202631",
+      "url": "https://huggingface.co/mflux-community/z-image-turbo-mflux-q8"
+    }
+  ],
+  "total": 1,
+  "next_cursor": null
+}
+```
+
+- `model_name` is the registry name of the upstream model. `supported` is true when this server can run it.
+- `in_cache` is true when the Hugging Face cache holds the repository.
+- To download a repository, send its ID to `POST /v8/downloads` (4.3).
+
 ## 5. Loaded model and generation
 
 ### 5.1 Load and unload
@@ -553,9 +593,9 @@ A model with a ControlNet loads more weights. On a 36 GB Mac, the Qwen model wit
 
 | Field | Required | Description |
 |---|---|---|
-| `model` | Yes | A registry name, an alias or the name of a saved model. It can also be the repository ID of an mflux-format model in the Hugging Face cache, for example `mflux-community/flux2-klein-9b-kv-mflux-q4`. |
-| `base_model` | No | Required for a saved model without a sidecar file. For a Hugging Face cache model, the community manifest gives it, so it is needed only when the manifest does not name the model. |
-| `quantize` | No | The default is `default_quantize`. Not allowed for a saved model or an mflux-format model, which is already quantized. |
+| `model` | Yes | A registry name, an alias, or the repository ID of an mflux-format model in the Hugging Face cache, for example `mflux-community/flux2-klein-9b-kv-mflux-q4`. A name with no owner, for example `z-image-turbo-q8`, means `local/z-image-turbo-q8` when it is not a registry name. |
+| `base_model` | No | For an mflux-format model, the sidecar file or the community catalog gives it. Give it only when neither names the base model. After a load with `base_model`, the server writes the sidecar file. |
+| `quantize` | No | The default is `default_quantize`. Not allowed for an mflux-format model, which is already quantized. |
 | `low_ram` | No | Default `false`. See below. |
 | `loras` | No | LoRA files from `GET /v8/loras`: a list of names, or of `{"name", "scale"}` objects. The scale is a number and the default is `1.0`. At most 8. mflux merges them into the weights at load. To change the LoRAs, send a new load request. A model that has no LoRA support returns `lora_not_supported`. |
 | other options | No | The other options in `load_schema` (4.2). |
@@ -564,7 +604,7 @@ Rules:
 
 - If a model is loaded, the load job unloads it first.
 - The job checks the free memory before it loads. If the check fails, the job fails with `insufficient_memory`. The old model is then already unloaded.
-- The load job does not download. If the model is not complete in the Hugging Face cache, the load request returns `not_found` at once. Send a download request first. The message names the saved models in the mflux directory that are copies of the model. A load request for one of them needs `base_model`.
+- The load job does not download. If the model is not complete in the Hugging Face cache, the load request returns `not_found` at once. Send a download request first. The message names the mflux-format models in the cache that load as this model.
 
 Low-RAM mode (scope 3.8):
 
@@ -670,7 +710,7 @@ Three routes follow the OpenAI images API, so a client that speaks it can use th
 | `POST /v1/images/generations` | JSON: `model`, `prompt`, `n`, `size` (`1024x1024`), `response_format` (`b64_json` or `url`). |
 | `POST /v1/images/edits` | Multipart: `image`, `prompt`, `model`, `n`, `size`, `response_format`. |
 
-- `model` is a registry name, an alias or a saved model. The route loads it first when it is not the loaded model. Without `model`, the route uses the loaded model.
+- `model` is a registry name, an alias or an mflux-format model. The route loads it first when it is not the loaded model. Without `model`, the route uses the loaded model.
 - `n` is the number of images. The route picks `n` random seeds. A client can add `seed`, `steps`, `guidance` and `negative_prompt`. They are not OpenAI fields, and the rules of 5.2 apply to them.
 - `response_format` defaults to `b64_json`. A `url` points to `GET /v8/images/{job_id}/{index}`, which needs the token like every route.
 - A client that closes the request cancels the job.
@@ -695,11 +735,12 @@ Each tool calls the same server code as the REST endpoint.
 | `get_config` | `GET /v8/config` | read-only |
 | `set_config` | `PATCH /v8/config` | |
 | `list_registry_models` | `GET /v8/registry` | read-only |
+| `list_community_models` | `GET /v8/models-community` | read-only |
 | `list_models` | `GET /v8/models` | read-only |
 | `download_model` | `POST /v8/downloads` | |
 | `save_model` | `POST /v8/saves` | |
-| `set_saved_model_base` | `PATCH /v8/models/mflux_dir/{name}` | |
-| `delete_model` | `DELETE /v8/models/{store}/{name}` | destructive |
+| `set_saved_model_base` | `PATCH /v8/models/{owner}/{name}` | |
+| `delete_model` | `DELETE /v8/models/{owner}/{name}` | destructive |
 | `upload_image` | `POST /v8/uploads` | |
 | `preview_mask` | `POST /v8/masks/preview` | read-only |
 | `list_loras` | `GET /v8/loras` | read-only |

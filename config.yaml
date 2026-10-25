@@ -2,24 +2,16 @@ mflux_config:
   default_quantize: 8
   allowed_quantize: "q3 q4 q5 q6 q8 bf16"
 
-mflux_models:
-  local_directory: /Volumes/Extreme2Tb/MFlux-Models
-  allow_download: true
-  allow_delete: true
-  max_models: 10
-  max_size_gb: 150
-  remote_url: https://huggingface.co/mflux-community
-  cron_minutes: 5
-
 huggingface_models:
   local_directory: /Volumes/Crucial500Gb/HUGGINGFACE_HUB_ACTIVE
+  mflux_remote_url: https://huggingface.co/mflux-community
   allow_hf_access: true
   allow_model_download: true
   require_model_confirmation: true
   allow_delete: true
-  max_models: 10
+  max_models: 100
   max_size_gb: 150
-  max_download_model_size_gb: 0.4
+  max_download_model_size_gb: 50
   cron_minutes: 5
 
 data_directory: ./data
@@ -28,7 +20,8 @@ image_directories:
   input: ./input
   # output: ./output
   # output: /Volumes/Extreme2Tb/AI_images_M4/___MFlux_Inbox
-  output: /Volumes/Extreme2Tb/AI_images_M4/___MFlux_Inbox/Hermes_Staging
+  output: /Volumes/Extreme2Tb/AI_images_M4/___MFlux_Inbox
+  output_temp: /Volumes/Extreme2Tb/AI_images_M4/___MFlux_Inbox/Hermes_Staging
   max_upload_mb: 50
 
 image_metadata:

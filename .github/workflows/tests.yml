@@ -2,9 +2,9 @@ name: Tests and Lint
 
 on:
   pull_request:
-    branches: [main]
+    branches: [na]
   push:
-    branches: [main]
+    branches: [na]
   schedule:
     # Daily: the mflux-main job finds a breaking change in mflux before it is released.
     - cron: "17 3 * * *"

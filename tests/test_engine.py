@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 from _fake_command import FakeModel
-from conftest import wait_for
+from conftest import cache_repo, wait_for
 
-from mlx_imagine import saved_models
+from mlx_imagine import hf_models, saved_models
 from mlx_imagine.engine import Engine
 from mlx_imagine.errors import ApiError
 
@@ -120,32 +120,34 @@ def test_a_failed_load_resets_the_target_to_the_model_that_is_loaded(engine: Eng
 
 
 def test_a_saved_model_loads_by_name_with_its_sidecar(engine: Engine) -> None:
-    """Bug: a saved model loads without --base-model, so mflux cannot tell its architecture."""
-    path = engine.models_dir / "zit-q8"
-    (path / "transformer").mkdir(parents=True)
-    (path / "transformer" / saved_models.INDEX).write_text('{"metadata": {"quantization_level": "8"}}')
+    """Bug: a saved model loads without --base-model, so mflux cannot tell its architecture, or a name with no
+    owner does not find local/<name>."""
+    snapshot = cache_repo("local/zit-q8")
     with pytest.raises(ApiError) as caught:
         engine.submit_load({"model": "zit-q8"})
     assert caught.value.code == "base_model_required"
     first = wait_for(engine.submit_load({"model": "zit-q8", "base_model": "z-image-turbo"}))
     assert first.state == "succeeded", first.error
-    assert saved_models.read_sidecar(path)["base_model"] == "z-image-turbo"  # the load wrote the sidecar
-    _load_job = wait_for(engine.submit_load({"model": "zit-q8"}))
+    assert saved_models.read_sidecar(snapshot)["base_model"] == "z-image-turbo"  # the load wrote the sidecar
+    _load_job = wait_for(engine.submit_load({"model": "local/zit-q8"}))
     assert _load_job.state == "succeeded", _load_job.error
-    assert FakeModel.instances[-1].args.model_path == str(path)
+    assert Path(FakeModel.instances[-1].args.model_path).resolve() == snapshot.resolve()
     with pytest.raises(ApiError) as caught:
-        engine.delete_saved_model("zit-q8", confirm=True)
+        engine.delete_model("local/zit-q8", confirm=True)
     assert caught.value.code == "model_in_use"
 
 
-def test_deletes_need_confirm(engine: Engine) -> None:
-    """Bug: a delete without confirm removes a model of many gigabytes."""
+def test_deletes_need_confirm_and_refuse_other_repositories(engine: Engine) -> None:
+    """Bug: a delete without confirm removes a model of many gigabytes, or a delete removes a repository that
+    is not an image model (another program's model)."""
     with pytest.raises(ApiError) as caught:
-        engine.delete_saved_model("anything", confirm=False)
+        engine.delete_model("Tongyi-MAI/Z-Image-Turbo", confirm=False)
     assert caught.value.code == "confirm_required"
+    cache_repo("someone/llm", mflux=False)
     with pytest.raises(ApiError) as caught:
-        engine.delete_hf_model("Tongyi-MAI/Z-Image-Turbo", confirm=False)
-    assert caught.value.code == "confirm_required"
+        engine.delete_model("someone/llm", confirm=True)
+    assert caught.value.status == 400
+    assert hf_models.repo_folder("someone/llm").exists()
 
 
 @pytest.mark.parametrize("name", ["../escape", "a/b", ".hidden", ""])
@@ -211,19 +213,39 @@ def test_a_save_request_clears_the_target_model(engine: Engine) -> None:
 
 
 def test_a_failed_save_leaves_no_partial_folder(engine: Engine, monkeypatch) -> None:
-    """Bug: a save that fails leaves `.<name>.partial`, which the API cannot delete and which counts as a
-    saved model."""
+    """Bug: a save that fails leaves a partial folder, which the API cannot delete."""
     from mlx_imagine import engine as engine_module
 
     def broken(model_name, quantize):
-        (engine.models_dir / ".broken.partial" / "transformer").mkdir(parents=True)
+        (hf_models.partial_folder("broken") / "transformer").mkdir(parents=True)
         raise RuntimeError("out of memory")
 
     monkeypatch.setattr(engine_module, "build_model_for_save", broken)
     job = wait_for(engine.submit_save({"model": "z-image-turbo", "quantize": 8, "name": "broken"}))
     assert job.state == "failed"
-    assert not (engine.models_dir / ".broken.partial").exists()
-    assert saved_models.list_models(engine.models_dir) == []
+    assert not hf_models.partial_folder("broken").exists()
+    assert not hf_models.repo_folder("local/broken").exists()
+
+
+def test_a_save_goes_into_the_hf_cache_as_a_local_repository(engine: Engine, monkeypatch) -> None:
+    """Bug: a save lands outside the Hugging Face cache, so the model lists do not show it and it cannot load."""
+    from mlx_imagine import engine as engine_module
+
+    class Saved:
+        def save_model(self, path: str) -> None:
+            (Path(path) / "transformer").mkdir(parents=True)
+            index = '{"metadata": {"quantization_level": "8", "mflux_version": "0.18"}}'
+            (Path(path) / "transformer" / saved_models.INDEX).write_text(index)
+
+    monkeypatch.setattr(engine_module, "build_model_for_save", lambda name, quantize: Saved())
+    job = wait_for(engine.submit_save({"model": "z-image-turbo", "quantize": 8, "name": "zit-q8"}))
+    assert job.state == "succeeded", job.error
+    assert job.result["id"] == "local/zit-q8" and job.result["format"] == "mflux" and job.result["loadable"]
+    with pytest.raises(ApiError) as caught:
+        engine.submit_save({"model": "z-image-turbo", "quantize": 8, "name": "zit-q8"})
+    assert caught.value.code == "name_in_use"
+    loaded = wait_for(engine.submit_load({"model": "zit-q8"}))
+    assert loaded.state == "succeeded", loaded.error
 
 
 def test_image_paths_must_be_strings(engine: Engine) -> None:
@@ -235,13 +257,8 @@ def test_image_paths_must_be_strings(engine: Engine) -> None:
 
 
 def test_an_mflux_format_model_in_the_hf_cache_loads_by_repo_id(engine: Engine) -> None:
-    """Bug: an mflux-format repository in the Hugging Face cache cannot load, so the user must copy it into the
-    mflux model directory first."""
-    import os
-
-    snapshot = Path(os.environ["HF_HUB_CACHE"]) / "models--mflux-community--zit-q8" / "snapshots" / "abc123"
-    (snapshot / "transformer").mkdir(parents=True)
-    (snapshot / "transformer" / saved_models.INDEX).write_text('{"metadata": {"quantization_level": "8"}}')
+    """Bug: an mflux-format repository in the Hugging Face cache cannot load."""
+    snapshot = cache_repo("mflux-community/zit-q8")
     with pytest.raises(ApiError) as caught:
         engine.submit_load({"model": "mflux-community/zit-q8"})
     assert caught.value.code == "base_model_required"
@@ -253,7 +270,7 @@ def test_an_mflux_format_model_in_the_hf_cache_loads_by_repo_id(engine: Engine) 
     assert engine.loaded.spec.hub_repo == "mflux-community/zit-q8"
     assert Path(FakeModel.instances[-1].args.model_path).resolve() == snapshot.resolve()
     with pytest.raises(ApiError) as caught:
-        engine.delete_hf_model("mflux-community/zit-q8", confirm=True)
+        engine.delete_model("mflux-community/zit-q8", confirm=True)
     assert caught.value.code == "model_in_use"
 
 
@@ -337,13 +354,9 @@ def test_a_load_of_an_incomplete_model_fails_at_once_and_names_the_saved_copy(en
     from mlx_imagine.errors import ApiError
 
     monkeypatch.setattr(hf_models, "is_complete", lambda entry: False)
-    saved = engine.models_dir / "Tongyi-MAI--Z-Image-Turbo-mflux-q8"
-    saved.mkdir(parents=True)
-    (saved / "model.safetensors.index.json").write_text("{}")
-    (saved / "transformer").mkdir()
-    (saved / "transformer" / "model.safetensors.index.json").write_text("{}")
+    cache_repo("local/zit-q8", with_sidecar=True)
     with pytest.raises(ApiError) as error:
         engine.submit_load({"model": "z-image-turbo"})
     assert error.value.code == "not_found"
-    assert "Tongyi-MAI--Z-Image-Turbo-mflux-q8" in error.value.message and "base_model" in error.value.message
+    assert "local/zit-q8" in error.value.message
     assert not engine.queue.waiting()

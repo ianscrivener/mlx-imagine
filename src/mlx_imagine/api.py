@@ -17,9 +17,6 @@ from .engine import Engine
 from .errors import ApiError, invalid_request
 from .middleware import AuthMiddleware, BodyLimitMiddleware
 
-Store = Literal["hf_cache", "mflux_dir", "mflux_community", "hub"]
-Location = Literal["local", "remote"]
-ModelFormat = Literal["hf", "mflux"]
 JobState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 UPLOAD_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
 SSE_KEEPALIVE_SECONDS = 15
@@ -104,20 +101,38 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
 
     # -- models ------------------------------------------------------------------------------------------------
 
-    @app.get("/v8/models")
-    def list_models(
-        location: Annotated[Location, Query(description="local (this Mac) or remote (a Hugging Face address).")] = None,  # ty: ignore[invalid-parameter-default]
-        format: Annotated[ModelFormat, Query(description="hf (original layout) or mflux (mflux layout).")] = None,  # ty: ignore[invalid-parameter-default]
-        store: Annotated[Store, Query(description="hf_cache, mflux_dir, mflux_community or hub.")] = None,  # ty: ignore[invalid-parameter-default]
-        supported: Annotated[bool | None, Query(description="true: only models this server can run.")] = None,
-        family: Annotated[str | None, Query(description="A model family, for example flux2 or z-image.")] = None,
-        q: Annotated[str | None, Query(description="A text in the name. The hub store needs it.")] = None,
+    def model_list(view: str, description: str) -> None:
+        @app.get(f"/v8/models{'' if view == 'models' else '/' + view}", summary=description)
+        def list_models(
+            supported: Annotated[bool | None, Query(description="true: only models this server can run.")] = None,
+            family: Annotated[str | None, Query(description="A model family, for example flux2 or z-image.")] = None,
+            q: Annotated[str | None, Query(description="A text in the repository ID.")] = None,
+            limit: Annotated[int | None, Query(ge=1, le=100, description="The page size.")] = None,
+            cursor: Annotated[str | None, Query(description="The next_cursor of the last page.")] = None,
+        ) -> dict[str, Any]:
+            filters = {"supported": supported, "family": family, "q": q, "limit": limit, "cursor": cursor}
+            return engine.catalog.list_models(view, filters)
+
+    model_list("models", "List the image models: mflux format and Hugging Face format")
+    model_list("mflux", "List the mflux-format models")
+    model_list("hf", "List the Hugging Face-format models of the mflux registry, 1 GB or larger")
+    model_list("hf/all", "List the Hugging Face-format models of the mflux registry, all sizes")
+    model_list("other", "List the other repositories in the Hugging Face cache")
+    model_list("all", "List all repositories in the Hugging Face cache, except hf repositories under 1 GB")
+
+    @app.get("/v8/models-community", summary="List the mflux-community models on the Hub")
+    def community_models(
+        q: Annotated[str | None, Query(description="The quantization: 3, 4, 5, 6, 8 or bf16. Same as quant.")] = None,
+        quant: Annotated[str | None, Query(description="The quantization: 3, 4, 5, 6, 8, q4 or bf16.")] = None,
+        ns: Annotated[str | None, Query(description="The upstream owner, for example Qwen, krea or bfl.")] = None,
+        namespace: Annotated[str | None, Query(description="Same as ns.")] = None,
+        search: Annotated[str | None, Query(description="A text in the repository ID, for example qwen.")] = None,
+        s: Annotated[str | None, Query(description="Same as search.")] = None,
         limit: Annotated[int | None, Query(ge=1, le=100, description="The page size.")] = None,
         cursor: Annotated[str | None, Query(description="The next_cursor of the last page.")] = None,
     ) -> dict[str, Any]:
-        filters = {"location": location, "format": format, "store": store, "supported": supported,
-                   "family": family, "q": q, "limit": limit, "cursor": cursor}  # fmt: skip
-        return engine.catalog.list_models(filters)
+        filters = {"quant": quant or q, "ns": ns or namespace, "search": search or s, "limit": limit, "cursor": cursor}
+        return engine.catalog.list_community(filters)
 
     @app.post("/v8/models/scans", status_code=202)
     def rescan() -> dict[str, Any]:
@@ -165,26 +180,24 @@ def create_app(engine: Engine, mcp_app: Any = None, mcp_lifespan: Any = None) ->
     ) -> dict[str, Any]:
         return engine.queue.describe(engine.submit_save(body))
 
-    @app.get("/v8/models/{store}/{name:path}")
-    def get_model(store: Store, name: str) -> dict[str, Any]:
-        return engine.catalog.get(store, name)
+    @app.get("/v8/models/{owner}/{name}")
+    def get_model(owner: str, name: str) -> dict[str, Any]:
+        return engine.catalog.get(f"{owner}/{name}")
 
-    @app.patch("/v8/models/{store}/{name:path}")
+    @app.patch("/v8/models/{owner}/{name}")
     def set_base(
-        store: Store, name: str, body: dict[str, Any] = Body(..., examples=[{"base_model": "z-image-turbo"}])
+        owner: str, name: str, body: dict[str, Any] = Body(..., examples=[{"base_model": "z-image-turbo"}])
     ) -> dict[str, Any]:
-        if store != "mflux_dir":
-            raise invalid_request("Only a model in the store 'mflux_dir' has a base model.", store=store)
         base_model = body.get("base_model")
         if not isinstance(base_model, str):
             raise invalid_request("The request needs 'base_model'.")
-        return engine.set_base_model(name, base_model)
+        return engine.set_base_model(f"{owner}/{name}", base_model)
 
-    @app.delete("/v8/models/{store}/{name:path}")
+    @app.delete("/v8/models/{owner}/{name}")
     def delete_model(
-        store: Store, name: str, confirm: bool = Query(False, description="Must be true.")
+        owner: str, name: str, confirm: bool = Query(False, description="Must be true.")
     ) -> dict[str, Any]:
-        return engine.delete_model(store, name, confirm)
+        return engine.delete_model(f"{owner}/{name}", confirm)
 
     # -- LoRA files --------------------------------------------------------------------------------------------
 

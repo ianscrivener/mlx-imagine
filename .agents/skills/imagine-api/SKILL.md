@@ -28,7 +28,7 @@ description: Use a running mlx-imagine server to make images. Covers the models,
 
 ## Make an image
 
-1. Load the model: `PUT /v8/engine/model` with `{"model": "<name or saved model>", "quantize": 8}`. Send `quantize` only for a registry model. A saved model rejects it. Use a saved quantized model from `GET /v8/models?store=mflux_dir` when one exists.
+1. Load the model: `PUT /v8/engine/model` with `{"model": "<registry name or repo ID>", "quantize": 8}`. Send `quantize` only for a registry model. An mflux-format model rejects it. Use an mflux-format model from `GET /v8/models/mflux` when one exists.
 2. Generate: `POST /v8/generate` with `{"prompt": "...", "seed": [1]}`. Give more seeds for more images.
 3. Both calls return a job. Follow it with `GET /v8/jobs/<id>`, or with the event stream `GET /v8/jobs/<id>/events`.
 4. When the job ends with `succeeded`, each image is in `result.images[]`, with `path` and `url`.
@@ -71,11 +71,12 @@ Only one server runs for each user. If `mlx-imagine serve` stops with "A server 
 
 | Task | REST | MCP |
 |---|---|---|
-| List models (filters: `location`, `format`, `store`) | `GET /v8/models` | `list_models` |
+| List image models (`/mflux`, `/hf`, `/hf/all`, `/other`, `/all` for other views) | `GET /v8/models` | `list_models` |
+| Find a ready-made mflux model (`q`, `ns`, `search`) | `GET /v8/models-community` | `list_community_models` |
 | Download a model | `POST /v8/downloads` | `download_model` |
 | Save a quantized copy | `POST /v8/saves` | `save_model` |
-| Saved models | `GET /v8/models?store=mflux_dir` | `list_models` |
-| Delete | `DELETE ...?confirm=true` | `delete_*_model` with `confirm: true` |
+| mflux-format models | `GET /v8/models/mflux` | `list_models` with `view: mflux` |
+| Delete | `DELETE /v8/models/<owner>/<name>?confirm=true` | `delete_model` with `confirm: true` |
 
 Ask the user before each delete. A delete frees many gigabytes and cannot be undone.
 
